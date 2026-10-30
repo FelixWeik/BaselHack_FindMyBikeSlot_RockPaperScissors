@@ -106,6 +106,11 @@ bool cameraInit() {
   sensor_t *s = esp_camera_sensor_get();
   s->set_vflip(s, CAMERA_VFLIP);        // auf den Kopf stellen
   s->set_hmirror(s, CAMERA_HMIRROR);    // links/rechts spiegeln
+  if (s->id.PID == OV3660_PID) {        // OV3660 ist ab Werk etwas dunkel und übersättigt
+    s->set_brightness(s, 1);            // (Werte aus dem offiziellen Espressif-Beispiel)
+    s->set_saturation(s, -2);
+  }
+  // Hinweis: Autofokus gibt es nur beim OV5640 (Linse mit Motor). OV3660/OV2640 haben feste Linsen.
   Serial.printf("Kamera bereit: Sensor-ID 0x%x (0x26 = OV2640, 0x3660 = OV3660, 0x5640 = OV5640)\n",
                 s->id.PID);
   return true;
