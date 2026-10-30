@@ -1,11 +1,15 @@
 #include <Arduino.h>
+#include <ESPmDNS.h>         // Rechner im Netz über ihren Namen finden (<name>.local)
+#include <HTTPClient.h>      // HTTP-Anfragen senden
 #include <WiFi.h>            // WLAN-Bibliothek
 #include <esp_camera.h>      // Kamera-Bibliothek von Espressif
 #include "camera_pins.h"     // unsere Pin-Zuordnung
+#include "config.h"          // unsere Einstellungen (Ziel-Rechner, Intervall, ...)
 #include "secrets.h"         // WLAN-Name und Passwort (nicht im Repo)
 
 const int LED_PIN = 21;      // gelbe User-LED, leuchtet bei LOW
 bool cameraOk = false;
+IPAddress visionIp;          // IP des Empfängers, wird beim Start ermittelt
 
 // Kamera einstellen und starten. Gibt true zurück, wenn es geklappt hat.
 bool cameraInit() {
@@ -95,14 +99,43 @@ bool wifiConnect() {
   return true;
 }
 
+// Empfänger finden: erst über den Namen (mDNS), sonst die feste IP aus config.h.
+void resolveVision() {
+  MDNS.begin(DEVICE_ID);                              // mDNS auf dem Board starten
+  IPAddress ip = MDNS.queryHost(VISION_HOSTNAME, 3000);  // "Wer ist tempestD.local?" (max. 3 s)
+  if (ip != IPAddress(0, 0, 0, 0)) {
+    visionIp = ip;
+    Serial.printf("Empfaenger %s.local gefunden: %s\n", VISION_HOSTNAME, ip.toString().c_str());
+  } else {
+    visionIp.fromString(VISION_FALLBACK_IP);
+    Serial.printf("%s.local nicht gefunden, nehme feste IP %s\n", VISION_HOSTNAME, VISION_FALLBACK_IP);
+  }
+}
+
+// Ein Foto per HTTP POST verschicken. Gibt den HTTP-Code zurück (200 = ok, negativ = Netzwerkfehler).
+int sendFrame(camera_fb_t *fb) {
+  HTTPClient http;
+  String url = "http://" + visionIp.toString() + ":" + VISION_PORT + VISION_PATH;
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.begin(url);
+  http.addHeader("Content-Type", "image/jpeg");
+  http.addHeader("X-Device-Id", DEVICE_ID);                 // wer schickt?
+  http.addHeader("X-RSSI", String(WiFi.RSSI()));            // wie gut ist das WLAN?
+  http.addHeader("X-Uptime-S", String(millis() / 1000));    // seit wann läuft das Board?
+  int code = http.POST(fb->buf, fb->len);                   // Bild-Bytes direkt aus dem Kamera-Puffer
+  http.end();
+  return code;
+}
+
 void setup() {
   Serial.begin(115200);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);   // LED aus
   delay(2000);                   // Monitor Zeit zum Verbinden geben
+  Serial.printf("\n=== Kamera '%s' startet ===\n", DEVICE_ID);
   cameraOk = cameraInit();
-  wifiScan();
-  wifiConnect();
+  if (wifiConnect()) resolveVision();
 }
 
 void loop() {
@@ -118,10 +151,17 @@ void loop() {
 
   if (!fb) {
     Serial.println("Foto fehlgeschlagen");
+  } else if (WiFi.status() != WL_CONNECTED) {
+    Serial.printf("Foto: %u Bytes, nicht gesendet - WLAN: %s\n", fb->len, wifiStatusText(WiFi.status()));
+    esp_camera_fb_return(fb);
   } else {
-    Serial.printf("Foto: %u Bytes, %ux%u | WLAN: %s, %d dBm\n", fb->len, fb->width, fb->height,
-                  wifiStatusText(WiFi.status()), WiFi.RSSI());
+    if (visionIp == IPAddress(0, 0, 0, 0)) resolveVision();  // falls WLAN beim Start noch fehlte
+    unsigned long t0 = millis();
+    int code = sendFrame(fb);
+    size_t len = fb->len;
     esp_camera_fb_return(fb);               // Puffer SOFORT zurückgeben
+    Serial.printf("Foto: %u Bytes -> HTTP %d (%lu ms) | WLAN %d dBm\n", len, code, millis() - t0,
+                  WiFi.RSSI());
   }
-  delay(2000);
+  delay(CAPTURE_INTERVAL_MS);
 }
