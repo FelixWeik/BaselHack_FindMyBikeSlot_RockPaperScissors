@@ -3,9 +3,15 @@ export interface Point {
   y: number;
 }
 
-export interface ParkingGeometry {
-  /** Ordered polygon path for the usable parking area. */
+export interface ParkingRegion {
+  /** Optional region id for labels, sensors, or UI mapping. */
+  id?: string;
+  /** Ordered polygon path for one usable parking area. */
   boundary: Point[];
+}
+
+export interface ParkingGeometry {
+  regions: ParkingRegion[];
 }
 
 export interface ParkingHeatmap {
