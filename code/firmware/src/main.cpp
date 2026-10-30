@@ -3,6 +3,7 @@
 // Das Foto liegt nur kurz im Kamera-Puffer und wird nirgends gespeichert.
 
 #include <Arduino.h>
+#include <ArduinoOTA.h>      // Firmware-Updates über WLAN
 #include <ESPmDNS.h>         // Rechner im Netz über ihren Namen finden (<name>.local)
 #include <HTTPClient.h>      // HTTP-Anfragen senden
 #include <WiFi.h>            // WLAN-Bibliothek
@@ -205,6 +206,41 @@ void countFailure() {
   if (failures >= MAX_CONSECUTIVE_FAILURES) restart("zu viele Fehler hintereinander");
 }
 
+// ---------- Update über WLAN (OTA) ----------
+
+bool otaStarted = false;
+bool otaRunning = false;     // läuft gerade ein Update?
+
+// Wartet auf neue Firmware übers WLAN (Port 3232). Nur mit OTA_PASSWORD aus secrets.h.
+void otaSetup() {
+  ArduinoOTA.setHostname(DEVICE_ID);
+  ArduinoOTA.setPassword(OTA_PASSWORD);
+  ArduinoOTA.setMdnsEnabled(false);       // mDNS starten wir selbst (resolveVision)
+  ArduinoOTA.onStart([]() {
+    Serial.println("OTA: neue Firmware kommt ...");
+    otaRunning = true;
+    esp_task_wdt_delete(NULL);            // Upload dauert länger als der Watchdog erlaubt
+    ledOn();
+  });
+  ArduinoOTA.onEnd([]() { Serial.println("\nOTA: fertig, starte neu"); });
+  ArduinoOTA.onProgress([](unsigned int done, unsigned int total) {
+    static int lastPct = -1;
+    int pct = done * 100 / total;
+    if (pct / 10 != lastPct / 10) Serial.printf("OTA: %d %%\n", pct);
+    lastPct = pct;
+  });
+  ArduinoOTA.onError([](ota_error_t err) {
+    Serial.printf("OTA-Fehler %u (0=Passwort falsch)\n", err);
+    // Nur ein schon begonnenes Update braucht einen Neustart (Watchdog ist dann aus).
+    // Ein falsches Passwort wird nur gemeldet – sonst könnte jeder die Kamera neu starten lassen.
+    if (otaRunning) restart("OTA abgebrochen, alte Firmware laeuft weiter");
+  });
+  ArduinoOTA.begin();
+  otaStarted = true;
+  Serial.printf("OTA bereit: Update mit 'pio run -e xiao_s3_ota -t upload' an %s\n",
+                WiFi.localIP().toString().c_str());
+}
+
 // ---------- Programm ----------
 
 void setup() {
@@ -229,6 +265,7 @@ void loop() {
 
   if (wifiEnsure()) {
     if (visionIp == IPAddress(0, 0, 0, 0)) resolveVision();  // falls WLAN beim Start noch fehlte
+    if (!otaStarted) otaSetup();
 
     camera_fb_t *fb = esp_camera_fb_get();   // Foto holen
     if (!fb) {
@@ -252,6 +289,7 @@ void loop() {
   // bis zum nächsten Foto warten (Sendezeit wird abgezogen, damit der Takt stimmt)
   while (millis() - cycleStart < CAPTURE_INTERVAL_MS) {
     watchdogFeed();
+    if (otaStarted) ArduinoOTA.handle();     // nachschauen, ob ein Update ansteht
     delay(20);
   }
 }
