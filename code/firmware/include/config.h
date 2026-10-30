@@ -21,3 +21,9 @@
 // Wie oft ein Foto geschickt wird.
 #define CAPTURE_INTERVAL_MS 2000
 #define HTTP_TIMEOUT_MS 5000
+
+// Robustheit: Die Kamera soll tagelang allein laufen und sich selbst wieder fangen.
+#define WIFI_CONNECT_TIMEOUT_MS 20000    // so lange pro Verbindungsversuch warten
+#define WIFI_RESTART_AFTER_MS 60000      // so lange ohne WLAN → Neustart
+#define MAX_CONSECUTIVE_FAILURES 10      // so viele Fehler hintereinander → Neustart
+#define WATCHDOG_TIMEOUT_S 30            // Programm hängt so lange → automatischer Neustart

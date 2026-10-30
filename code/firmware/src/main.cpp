@@ -1,15 +1,69 @@
+// Find my Bike Slot – Kamera-Firmware (Seeed XIAO ESP32S3 Sense)
+// Macht alle 2 s ein Foto und schickt es per HTTP an den Auswerte-Rechner.
+// Das Foto liegt nur kurz im Kamera-Puffer und wird nirgends gespeichert.
+
 #include <Arduino.h>
 #include <ESPmDNS.h>         // Rechner im Netz über ihren Namen finden (<name>.local)
 #include <HTTPClient.h>      // HTTP-Anfragen senden
 #include <WiFi.h>            // WLAN-Bibliothek
 #include <esp_camera.h>      // Kamera-Bibliothek von Espressif
+#include <esp_task_wdt.h>    // Watchdog: startet das Board neu, wenn das Programm hängt
 #include "camera_pins.h"     // unsere Pin-Zuordnung
 #include "config.h"          // unsere Einstellungen (Ziel-Rechner, Intervall, ...)
 #include "secrets.h"         // WLAN-Name und Passwort (nicht im Repo)
 
 const int LED_PIN = 21;      // gelbe User-LED, leuchtet bei LOW
-bool cameraOk = false;
-IPAddress visionIp;          // IP des Empfängers, wird beim Start ermittelt
+IPAddress visionIp;          // IP des Empfängers, wird nach dem WLAN-Start ermittelt
+int failures = 0;            // Fehler hintereinander (Foto oder Senden)
+unsigned long wifiLostSince = 0;  // seit wann kein WLAN (0 = WLAN ist da)
+
+// ---------- Status-LED ----------
+// kurzes Blitzen      = Foto erfolgreich gesendet
+// schnelles Blinken   = sucht WLAN
+// Dauerlicht          = letzter Versuch ist fehlgeschlagen
+
+void ledOn()  { digitalWrite(LED_PIN, LOW); }
+void ledOff() { digitalWrite(LED_PIN, HIGH); }
+void ledFlash() { ledOn(); delay(40); ledOff(); }
+
+// ---------- Neustart & Watchdog ----------
+
+void restart(const char *reason) {
+  Serial.printf("NEUSTART: %s\n", reason);
+  Serial.flush();
+  delay(500);
+  ESP.restart();
+}
+
+// Warum hat das Board zuletzt (neu) gestartet? Hilft bei der Fehlersuche vor Ort.
+const char *resetReasonText() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:  return "Strom eingeschaltet";
+    case ESP_RST_SW:       return "Neustart durch Firmware";
+    case ESP_RST_PANIC:    return "Absturz";
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_INT_WDT:
+    case ESP_RST_WDT:      return "Watchdog (Programm hing)";
+    case ESP_RST_BROWNOUT: return "Spannung zu niedrig (Netzteil/Kabel zu schwach?)";
+    default:               return "anderer Grund (z. B. Upload oder RESET-Taste)";
+  }
+}
+
+void watchdogStart() {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  esp_task_wdt_config_t cfg = {
+      .timeout_ms = WATCHDOG_TIMEOUT_S * 1000, .idle_core_mask = 0, .trigger_panic = true};
+  esp_task_wdt_reconfigure(&cfg);
+#else
+  esp_task_wdt_init(WATCHDOG_TIMEOUT_S, true);  // true = bei Ablauf neu starten
+#endif
+  esp_task_wdt_add(NULL);                       // diese Schleife überwachen
+}
+
+// "Ich lebe noch" an den Watchdog melden. Muss öfter als alle WATCHDOG_TIMEOUT_S passieren.
+void watchdogFeed() { esp_task_wdt_reset(); }
+
+// ---------- Kamera ----------
 
 // Kamera einstellen und starten. Gibt true zurück, wenn es geklappt hat.
 bool cameraInit() {
@@ -56,46 +110,37 @@ bool cameraInit() {
   return true;
 }
 
-// Listet alle WLANs in Reichweite auf (nur zum Testen, braucht kein Passwort).
-void wifiScan() {
-  WiFi.mode(WIFI_STA);           // "Station" = Board verbindet sich mit einem WLAN (kein eigener Hotspot)
-  Serial.println("=== WLAN-Scan ===");
-  int n = WiFi.scanNetworks();
-  for (int i = 0; i < n; i++) {
-    Serial.printf("%2d  %-32s  Signal %4d dBm  Kanal %2d  %s\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i),
-                  WiFi.channel(i), WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "offen" : "Passwort");
-  }
-  Serial.printf("%d Netze gefunden\n", n);
-  WiFi.scanDelete();             // Ergebnisliste wieder freigeben
-}
+// ---------- WLAN ----------
 
 // Übersetzt den WLAN-Status in lesbaren Text.
 const char *wifiStatusText(wl_status_t s) {
   switch (s) {
-    case WL_CONNECTED:      return "verbunden";
-    case WL_NO_SSID_AVAIL:  return "Netz nicht gefunden (zu schwach?)";
-    case WL_CONNECT_FAILED: return "Verbindung abgelehnt (Passwort?)";
-    case WL_CONNECTION_LOST:return "Verbindung verloren";
-    case WL_DISCONNECTED:   return "getrennt";
-    case WL_IDLE_STATUS:    return "wartet";
-    default:                return "unbekannt";
+    case WL_CONNECTED:       return "verbunden";
+    case WL_NO_SSID_AVAIL:   return "Netz nicht gefunden (zu schwach? Antenne?)";
+    case WL_CONNECT_FAILED:  return "Verbindung abgelehnt (Passwort?)";
+    case WL_CONNECTION_LOST: return "Verbindung verloren";
+    case WL_DISCONNECTED:    return "getrennt";
+    case WL_IDLE_STATUS:     return "wartet";
+    default:                 return "unbekannt";
   }
 }
 
-// Mit dem WLAN aus secrets.h verbinden. Wartet höchstens 20 Sekunden.
+// Mit dem WLAN aus secrets.h verbinden. Die LED blinkt schnell, solange gesucht wird.
 bool wifiConnect() {
   Serial.printf("Verbinde mit '%s' ...\n", WIFI_SSID);
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_STA);           // "Station" = Board verbindet sich mit einem WLAN
   WiFi.setSleep(false);          // Funk nicht schlafen legen = schneller und stabiler
-  WiFi.setAutoReconnect(true);   // bei Abbruch selbst neu verbinden
+  WiFi.setAutoReconnect(true);   // bei kurzen Abbrüchen selbst neu verbinden
+  WiFi.disconnect();             // evtl. halb offene alte Verbindung aufräumen
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
-    Serial.print(".");
-    delay(500);
+  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
+    watchdogFeed();              // Warten ist kein Hängen
+    (millis() / 250) % 2 ? ledOn() : ledOff();
+    delay(50);
   }
-  Serial.println();
+  ledOff();
   if (WiFi.status() != WL_CONNECTED) {
     Serial.printf("WLAN fehlgeschlagen: %s\n", wifiStatusText(WiFi.status()));
     return false;
@@ -105,9 +150,28 @@ bool wifiConnect() {
   return true;
 }
 
+// Sorgt dafür, dass WLAN da ist. Startet das Board neu, wenn es zu lange weg ist.
+bool wifiEnsure() {
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiLostSince = 0;
+    return true;
+  }
+  if (wifiLostSince == 0) wifiLostSince = millis();
+  Serial.printf("WLAN weg (%s), seit %lu s\n", wifiStatusText(WiFi.status()), (millis() - wifiLostSince) / 1000);
+  if (wifiConnect()) {
+    wifiLostSince = 0;
+    return true;
+  }
+  if (millis() - wifiLostSince > WIFI_RESTART_AFTER_MS) restart("zu lange kein WLAN");
+  return false;
+}
+
+// ---------- Senden ----------
+
 // Empfänger finden: erst über den Namen (mDNS), sonst die feste IP aus config.h.
 void resolveVision() {
-  MDNS.begin(DEVICE_ID);                              // mDNS auf dem Board starten
+  static bool mdnsStarted = false;
+  if (!mdnsStarted) mdnsStarted = MDNS.begin(DEVICE_ID);
   IPAddress ip = MDNS.queryHost(VISION_HOSTNAME, 3000);  // "Wer ist tempestD.local?" (max. 3 s)
   if (ip != IPAddress(0, 0, 0, 0)) {
     visionIp = ip;
@@ -134,40 +198,60 @@ int sendFrame(camera_fb_t *fb) {
   return code;
 }
 
+// Fehler zählen. Zu viele hintereinander → Neustart (räumt Kamera, WLAN und Speicher komplett auf).
+void countFailure() {
+  failures++;
+  ledOn();                                  // Dauerlicht = es klemmt
+  if (failures >= MAX_CONSECUTIVE_FAILURES) restart("zu viele Fehler hintereinander");
+}
+
+// ---------- Programm ----------
+
 void setup() {
   Serial.begin(115200);
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, HIGH);   // LED aus
+  ledOff();
   delay(2000);                   // Monitor Zeit zum Verbinden geben
-  Serial.printf("\n=== Kamera '%s' startet ===\n", DEVICE_ID);
-  cameraOk = cameraInit();
+  Serial.printf("\n=== Kamera '%s' startet (letzter Start: %s) ===\n", DEVICE_ID, resetReasonText());
+  watchdogStart();
+
+  if (!cameraInit()) {
+    ledOn();
+    delay(10000);                // 10 s Zeit, die Meldung zu lesen
+    restart("Kamera startet nicht - Aufsatz pruefen");
+  }
   if (wifiConnect()) resolveVision();
 }
 
 void loop() {
-  if (!cameraOk) {
-    Serial.println("Keine Kamera - Aufsatz pruefen, dann RESET druecken");
-    delay(2000);
-    return;
-  }
+  watchdogFeed();
+  unsigned long cycleStart = millis();
 
-  digitalWrite(LED_PIN, LOW);               // LED an = "fotografiere"
-  camera_fb_t *fb = esp_camera_fb_get();    // Foto holen
-  digitalWrite(LED_PIN, HIGH);
-
-  if (!fb) {
-    Serial.println("Foto fehlgeschlagen");
-  } else if (WiFi.status() != WL_CONNECTED) {
-    Serial.printf("Foto: %u Bytes, nicht gesendet - WLAN: %s\n", fb->len, wifiStatusText(WiFi.status()));
-    esp_camera_fb_return(fb);
-  } else {
+  if (wifiEnsure()) {
     if (visionIp == IPAddress(0, 0, 0, 0)) resolveVision();  // falls WLAN beim Start noch fehlte
-    unsigned long t0 = millis();
-    int code = sendFrame(fb);
-    size_t len = fb->len;
-    esp_camera_fb_return(fb);               // Puffer SOFORT zurückgeben
-    Serial.printf("Foto: %u Bytes -> HTTP %d (%lu ms) | WLAN %d dBm\n", len, code, millis() - t0,
-                  WiFi.RSSI());
+
+    camera_fb_t *fb = esp_camera_fb_get();   // Foto holen
+    if (!fb) {
+      Serial.println("Foto fehlgeschlagen");
+      countFailure();
+    } else {
+      int code = sendFrame(fb);
+      size_t len = fb->len;
+      esp_camera_fb_return(fb);               // Puffer SOFORT zurückgeben
+      Serial.printf("Foto: %u Bytes -> HTTP %d (%lu ms) | WLAN %d dBm | Fehler in Folge: %d\n", len, code,
+                    millis() - cycleStart, WiFi.RSSI(), code == 200 ? 0 : failures + 1);
+      if (code == 200) {
+        failures = 0;
+        ledFlash();
+      } else {
+        countFailure();
+      }
+    }
   }
-  delay(CAPTURE_INTERVAL_MS);
+
+  // bis zum nächsten Foto warten (Sendezeit wird abgezogen, damit der Takt stimmt)
+  while (millis() - cycleStart < CAPTURE_INTERVAL_MS) {
+    watchdogFeed();
+    delay(20);
+  }
 }
