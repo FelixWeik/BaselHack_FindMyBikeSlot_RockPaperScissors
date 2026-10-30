@@ -35,8 +35,8 @@ bool cameraInit() {
   config.ledc_timer = LEDC_TIMER_0;
 
   config.pixel_format = PIXFORMAT_JPEG;     // Kamera liefert fertig komprimiertes JPEG
-  config.frame_size = FRAMESIZE_QVGA;       // 320 x 240 Pixel
-  config.jpeg_quality = 12;                 // 0..63, kleiner = schöner, aber größer
+  config.frame_size = FRAME_SIZE;           // Auflösung aus config.h
+  config.jpeg_quality = JPEG_QUALITY;       // 0..63, kleiner = schöner, aber größer
   config.fb_count = 2;                      // 2 Bildpuffer ...
   config.fb_location = CAMERA_FB_IN_PSRAM;  // ... im 8-MB-Zusatzspeicher
   config.grab_mode = CAMERA_GRAB_LATEST;    // immer das neueste Bild liefern
@@ -46,7 +46,13 @@ bool cameraInit() {
     Serial.printf("Kamera-Start fehlgeschlagen, Fehler 0x%x\n", err);
     return false;
   }
-  Serial.println("Kamera bereit");
+
+  // Bild-Einstellungen am Sensor selbst
+  sensor_t *s = esp_camera_sensor_get();
+  s->set_vflip(s, CAMERA_VFLIP);        // auf den Kopf stellen
+  s->set_hmirror(s, CAMERA_HMIRROR);    // links/rechts spiegeln
+  Serial.printf("Kamera bereit: Sensor-ID 0x%x (0x26 = OV2640, 0x3660 = OV3660, 0x5640 = OV5640)\n",
+                s->id.PID);
   return true;
 }
 

@@ -12,6 +12,12 @@
 #define VISION_PORT 8001
 #define VISION_PATH "/api/v1/frames"
 
+// Bild
+#define FRAME_SIZE FRAMESIZE_VGA   // 640x480. Alternativen: FRAMESIZE_QVGA (320x240), FRAMESIZE_SVGA (800x600)
+#define JPEG_QUALITY 10            // 0..63, kleiner = schärfer, aber größere Datei
+#define CAMERA_VFLIP 1             // 1 = Bild auf den Kopf stellen (je nach Montage)
+#define CAMERA_HMIRROR 0           // 1 = Bild links/rechts spiegeln
+
 // Wie oft ein Foto geschickt wird.
 #define CAPTURE_INTERVAL_MS 2000
 #define HTTP_TIMEOUT_MS 5000
