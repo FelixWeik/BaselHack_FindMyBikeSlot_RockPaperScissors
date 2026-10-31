@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.config import Settings
+from app.demo_view import place_label
 from app.detector import Detection
 from app.main import create_app
 
@@ -69,3 +70,16 @@ def test_presenter_view_sends_nothing_when_masking_fails():
 
 def test_unknown_camera_has_no_frame():
     assert client(demo_view=True).get("/demo/cameras/nope/frame.jpg").status_code == 404
+
+
+def test_labels_of_overlapping_boxes_do_not_hide_each_other():
+    image = (1024, 768)
+    first = place_label((660, 320, 775, 545), (120, 30), [], image)
+    second = place_label((715, 340, 945, 540), (120, 30), [first], image)
+    assert first == (660, 290, 780, 320)  # above its box
+    assert not (second[0] < first[2] and first[0] < second[2] and second[1] < first[3] and first[1] < second[3])
+    assert 340 <= second[1] <= 540 - 30  # still within its own box
+
+
+def test_label_stays_inside_the_image():
+    assert place_label((1000, 0, 1020, 100), (120, 30), [], (1024, 768)) == (904, 0, 1024, 30)
