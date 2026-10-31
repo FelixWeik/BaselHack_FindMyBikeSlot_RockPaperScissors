@@ -64,14 +64,23 @@ class Output:
         target = self.images / f"{name}.jpg"
         save_jpeg(image, target, rng)
         write_labels(self.labels / f"{name}.txt", boxes, *image.size)
-        self.lists[split].append(str(target.resolve()))
+        self.lists[split].append(str(target.absolute()))
 
     def add_existing(self, split: str, name: str, source: Path, boxes, size: tuple[int, int]) -> None:
         target = self.images / f"{name}.jpg"
         if not target.exists():
             target.symlink_to(source.resolve())
         write_labels(self.labels / f"{name}.txt", boxes, *size)
-        self.lists[split].append(str(target.resolve()))
+        # Not resolved: Ultralytics finds a label by swapping /images/ for /labels/ in this very path.
+        self.lists[split].append(str(target.absolute()))
+
+
+def check_labels(out: Output) -> None:
+    """A missing label file isn't an error for Ultralytics: the image silently becomes a bike-free background."""
+    for name, paths in out.lists.items():
+        missing = [p for p in paths if not Path(p.replace("/images/", "/labels/")).with_suffix(".txt").exists()]
+        if missing:
+            raise SystemExit(f"{len(missing)} {name} images have no label file, e.g. {missing[0]}")
 
 
 def add_coco(out: Output, coco: Path, rng: random.Random, val_share: float = 0.06) -> None:
@@ -324,6 +333,7 @@ def main() -> None:
             boxes = [tuple(v * scale for v in b) for b in boxes]
         out.add(split, f"synth_{n:05d}", scene, boxes, rng)
     print("all", {k: len(v) for k, v in out.lists.items()}, flush=True)
+    check_labels(out)
 
     for split, items in out.lists.items():
         rng.shuffle(items)

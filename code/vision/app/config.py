@@ -15,7 +15,9 @@ def _env_path(name: str) -> Path | None:
 @dataclass(frozen=True)
 class Settings:
     backend_url: str = field(default_factory=lambda: os.getenv("BACKEND_URL", "http://localhost:8000"))
-    model_path: str = field(default_factory=lambda: os.getenv("MODEL_PATH", str(SERVICE_DIR / "models" / "bikes.pt")))
+    model_path: str = field(
+        default_factory=lambda: os.getenv("MODEL_PATH", str(SERVICE_DIR / "models" / "yolo-bikes-v3.pt"))
+    )
     # Class names counted as a bike. Pretrained COCO models use "bicycle"; custom models may use "bike".
     bike_classes: tuple[str, ...] = field(
         default_factory=lambda: tuple(os.getenv("BIKE_CLASSES", "bicycle,bike").split(","))

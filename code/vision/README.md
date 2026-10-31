@@ -80,7 +80,7 @@ RECORD_DIR=recordings uv run --group model uvicorn app.main:create_app --factory
 | Variable | Default | Purpose |
 |---|---|---|
 | `BACKEND_URL` | `http://localhost:8000` | where the bike boxes are sent |
-| `MODEL_PATH` | `models/bikes.pt` | Ultralytics model file |
+| `MODEL_PATH` | `models/yolo-bikes-v3.pt` | Ultralytics model file |
 | `BIKE_CLASSES` | `bicycle,bike` | class names counted as a bike |
 | `MIN_CONFIDENCE` | `0.25` | detection threshold |
 | `IMGSZ` | `960` | inference resolution |

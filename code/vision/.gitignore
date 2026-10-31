@@ -6,3 +6,5 @@ __pycache__/
 recordings/
 *.pt
 *.onnx
+!models/yolo-bikes-v3.pt
+training/output/
