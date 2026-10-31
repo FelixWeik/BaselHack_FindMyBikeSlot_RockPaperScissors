@@ -215,10 +215,33 @@ def process_file(filepath, ransac_thresh=250.0, min_samples=0.55, mad_mult=6.0,
 
 
 def process_all(ransac_thresh=250.0, min_samples=0.55, mad_mult=6.0, max_distance_mm=None):
-    log_directory = Path(__file__).resolve().parent.parent.parent.parent / "assets" / "lidarData"
+    """Process all log files from code/Hardware/logs/ (or fallback locations)."""
+    # Script is at: code/backend/lidar/lidar_ransac_radar_view.py
+    # Repo root: 3 levels up from script dir's parent chain
+    script_dir = Path(__file__).resolve().parent  # code/backend/lidar
+    repo_root = script_dir.parent.parent.parent  # repo root
+
+    # Primary: code/Hardware/logs/
+    log_directory = repo_root / "code" / "Hardware" / "logs"
     files = sorted(log_directory.glob("*.txt"))
+
+    # Fallback 1: relative path code/Hardware/logs
     if not files:
-        files = sorted(Path("assets/lidarData").glob("*.txt"))
+        rel = Path("code/Hardware/logs")
+        if rel.exists():
+            files = sorted(rel.glob("*.txt"))
+
+    # Fallback 2: assets/lidarData/
+    if not files:
+        assets_dir = repo_root / "assets" / "lidarData"
+        files = sorted(assets_dir.glob("*.txt"))
+
+    # Fallback 3: relative assets/lidarData
+    if not files:
+        rel_assets = Path("assets/lidarData")
+        if rel_assets.exists():
+            files = sorted(rel_assets.glob("*.txt"))
+
     if not files:
         print("No .txt files found!")
         return
