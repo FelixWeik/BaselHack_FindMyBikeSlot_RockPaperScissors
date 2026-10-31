@@ -110,6 +110,16 @@ bool cameraInit() {
   sensor_t *s = esp_camera_sensor_get();
   s->set_vflip(s, CAMERA_VFLIP);
   s->set_hmirror(s, CAMERA_HMIRROR);
+  // The rack is shot against bright windows: let the DSP-assisted auto exposure lift the dark
+  // foreground and allow more gain instead of exposing for the sky.
+  s->set_exposure_ctrl(s, 1);
+  s->set_aec2(s, 1);
+  s->set_ae_level(s, 1);
+  s->set_gain_ctrl(s, 1);
+  s->set_gainceiling(s, GAINCEILING_8X);
+  s->set_whitebal(s, 1);
+  s->set_awb_gain(s, 1);
+  s->set_lenc(s, 1);  // lens shading correction, removes the dark corners
   if (s->id.PID == OV3660_PID) {
     // OV3660 defaults are dark and oversaturated; values from the Espressif CameraWebServer example.
     s->set_brightness(s, 1);

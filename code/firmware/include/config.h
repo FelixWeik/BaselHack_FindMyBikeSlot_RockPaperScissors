@@ -6,18 +6,18 @@
 
 // Vision service. Resolved via mDNS (<VISION_HOSTNAME>.local) first, then VISION_FALLBACK_IP.
 #define VISION_HOSTNAME "tempestD"  // without ".local"
-#define VISION_FALLBACK_IP "192.168.22.2"
+#define VISION_FALLBACK_IP "10.165.73.246"  // only used if mDNS fails; laptop IP on the demo hotspot
 #define VISION_PORT 8001
 #define VISION_PATH "/api/v1/frames"
 
 // Image
-#define FRAME_SIZE FRAMESIZE_VGA  // 640x480. Alternatives: FRAMESIZE_QVGA (320x240), FRAMESIZE_SVGA (800x600)
+#define FRAME_SIZE FRAMESIZE_XGA  // 1024x768, close to the vision model input (IMGSZ=960); VGA would be upscaled
 #define JPEG_QUALITY 10           // 0..63, lower = better quality, larger file
 #define CAMERA_VFLIP 1            // depends on how the camera is mounted
 #define CAMERA_HMIRROR 0
 
 // Timing
-#define CAPTURE_INTERVAL_MS 1000  // vision needs ~200 ms per frame, so 1 fps leaves headroom
+#define CAPTURE_INTERVAL_MS 300  // upper bound only: each upload waits for the vision reply, so YOLO sets the pace
 #define HTTP_TIMEOUT_MS 5000
 
 // Self-recovery: the node must run unattended for days.
