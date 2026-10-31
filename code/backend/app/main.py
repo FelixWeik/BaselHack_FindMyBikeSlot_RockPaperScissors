@@ -127,8 +127,8 @@ def create_app(
 
     @app.delete("/api/v1/parkings/{parking_id}", status_code=204)
     def delete_parking(parking_id: str) -> Response:
-        if not store.delete_parking(parking_id):
-            raise HTTPException(status_code=404, detail="Unknown parking")
+        """Idempotent: the admin may delete a zone it never managed to save, and a retry must not fail."""
+        store.delete_parking(parking_id)
         return Response(status_code=204)
 
     @app.get("/api/v1/parkings/{parking_id}/occupancy")
