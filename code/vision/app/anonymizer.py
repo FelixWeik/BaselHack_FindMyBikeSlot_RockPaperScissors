@@ -37,8 +37,9 @@ class DefaceAnonymizer:
             faces,
             frame,
             mask_scale=MASK_MARGIN,
-            replacewith="solid",
-            ellipse=False,
+            # Blurred ellipse instead of a black box: hides the face but keeps the bike next to it visible.
+            replacewith="blur",
+            ellipse=True,
             draw_scores=False,
             replaceimg=None,
             mosaicsize=20,

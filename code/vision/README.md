@@ -43,7 +43,7 @@ DEMO_VIEW=1 uv run --group model uvicorn app.main:create_app --factory --host 0.
 ## Calibration capture
 
 `POST /api/v1/devices/{id}/calibration-capture` takes the camera's next frame, finds faces with
-[Deface](https://github.com/ORB-HD/deface)'s CenterFace, masks them with opaque rectangles larger than the face, and returns the JPEG
+[Deface](https://github.com/ORB-HD/deface)'s CenterFace, blurs them under an ellipse larger than the face, and returns the JPEG
 with `Cache-Control: no-store`. All in memory, with no temporary file. If it fails, the answer is `503` and no image.
 
 Deface can miss a face, especially a small or turned-away one: this reduces the risk but doesn't remove it.
