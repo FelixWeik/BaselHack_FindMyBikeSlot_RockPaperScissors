@@ -1,29 +1,30 @@
-# Schnittstellen – Find my Bike Slot
+# Interfaces
 
-> Gemeinsamer Vertrag zwischen Kamera, Auswertung, Backend und Frontend.
-> Änderungen nur nach Absprache im Team – sonst passen die Teile nicht mehr zusammen.
-
-```
-Kamera ──(1) JPEG──▶ Auswertung :8001 ──(2) JSON──▶ Backend :8000 ──(3) Heatmap──▶ Frontend
-```
-
-Zeitangaben immer ISO 8601 in UTC, z. B. `2026-10-31T10:15:02Z`.
-
-## (1) Kamera → Auswertung ✅ umgesetzt (`code/firmware`)
+> Shared contract between camera nodes, vision service, backend and frontend.
+> Change it only together with the code on both sides of an interface.
 
 ```
-POST http://<auswertung>:8001/api/v1/frames
+Camera ──(1) JPEG──▶ Vision :8001 ──(2) JSON──▶ Backend :8000 ──(3) Heatmap──▶ Frontend
+```
+
+All timestamps are ISO 8601 in UTC, e.g. `2026-10-31T10:15:02Z`.
+
+## (1) Camera → Vision — implemented (`code/firmware`)
+
+```
+POST http://<vision-host>:8001/api/v1/frames
 Content-Type: image/jpeg
-X-Device-Id: cam-memox-nord      eindeutiger Name der Kamera
-X-RSSI: -55                      WLAN-Signal in dBm
-X-Uptime-S: 1234                 Sekunden seit Start der Kamera
-Body: JPEG 640x480, alle 2 s
+X-Device-Id: cam-memox-nord      unique camera name
+X-RSSI: -55                      WiFi signal in dBm
+X-Uptime-S: 1234                 seconds since camera boot
+Body: JPEG 640x480, every 2 s
 ```
 
-Antwort `200` = angekommen. Alles andere zählt die Kamera als Fehler.
-**Privacy:** Das Bild wird nur im Arbeitsspeicher verarbeitet und danach verworfen – nie gespeichert.
+`200` means received; the camera counts any other response as a failure.
 
-## (2) Auswertung → Backend ✅ umgesetzt (`code/backend`)
+**Privacy:** frames are processed in memory only and discarded afterwards. They are never stored.
+
+## (2) Vision → Backend — implemented (`code/backend`)
 
 ```
 POST http://<backend>:8000/api/v1/observations
@@ -42,20 +43,20 @@ Content-Type: application/json
 }
 ```
 
-| Feld | Bedeutung |
+| Field | Meaning |
 |---|---|
-| `device_id` | Kamera, von der das Foto kam (aus `X-Device-Id`) |
-| `ts` | Zeitpunkt der Auswertung |
-| `slots[].slot_id` | Stellplatz-Name, pro Kamera eindeutig |
-| `slots[].state` | `free`, `occupied` oder `unknown` (z. B. Person verdeckt, Bild zu dunkel) |
-| `slots[].conf` | Sicherheit der Auswertung, 0..1 |
+| `device_id` | camera the frame came from (from `X-Device-Id`) |
+| `ts` | analysis time |
+| `slots[].slot_id` | slot name, unique per camera |
+| `slots[].state` | `free`, `occupied` or `unknown` (e.g. occluded by a person, image too dark) |
+| `slots[].conf` | detection confidence, 0..1 |
 
-Antwort `201`: `{"id": 1, "device_id": "cam-memox-nord", "free": 1, "occupied": 1, "unknown": 1}`
-Ungültige Nachricht → `422` mit Erklärung, was falsch ist.
+Response `201`: `{"id": 1, "device_id": "cam-memox-nord", "free": 1, "occupied": 1, "unknown": 1}`.
+Invalid payloads are rejected with `422` and a description of the error.
 
-Kontrolle: `GET /api/v1/observations/latest` liefert die neueste Nachricht pro Kamera.
+`GET /api/v1/observations/latest` returns the most recent observation per camera (for debugging).
 
-## (3) Backend → Frontend ⏳ geplant
+## (3) Backend → Frontend — planned
 
-Format: `ParkingHeatmap` aus `code/types/parkingHeatmap.ts`. Das Backend kennt die Position jedes
-Stellplatzes auf dem Lageplan (in Metern) und rechnet die Zustände in das Wahrscheinlichkeits-Raster um.
+Format: `ParkingHeatmap` from `code/types/parkingHeatmap.ts`. The backend knows the position of every
+slot on the site plan (in metres) and converts slot states into the probability grid.
