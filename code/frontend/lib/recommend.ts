@@ -15,7 +15,8 @@ interface Candidate {
 
 export type Recommendation<T extends Candidate> =
   | { kind: "go"; level: Level; item: T; stat: RegionStat }
-  | { kind: "closed"; item: T };
+  | { kind: "closed"; item: T }
+  | { kind: "unknown"; item: T };
 
 export interface HeldPick {
   parkingId: string;
@@ -27,25 +28,29 @@ export function recommend<T extends Candidate>(
   favorites: string[] = [],
   held: HeldPick | null = null,
 ): Recommendation<T> | null {
-  let best: { item: T; stat: RegionStat; score: number } | null = null;
+  let best: { item: T; stat: RegionStat; level: Level; score: number } | null = null;
   for (const item of items) {
     if (!item.openState.open || !item.stats) continue;
     const bonus = favorites.includes(item.config.id) ? FAVORITE_BONUS : 0;
     for (const stat of item.stats) {
+      // Never send anyone to a zone no camera can currently see.
+      if (stat.chance === null || stat.level === null) continue;
       const isHeld = held?.parkingId === item.config.id && held.key === stat.key;
       const score = stat.chance + bonus + (isHeld ? HOLD_BONUS : 0);
-      if (!best || score > best.score) best = { item, stat, score };
+      if (!best || score > best.score) best = { item, stat, level: stat.level, score };
     }
   }
-  if (best) return { kind: "go", level: best.stat.level, item: best.item, stat: best.stat };
+  if (best) return { kind: "go", level: best.level, item: best.item, stat: best.stat };
 
   const known = items.filter((i) => i.stats);
+  const open = known.find((i) => i.openState.open);
+  if (open) return { kind: "unknown", item: open };
   return known.length > 0 ? { kind: "closed", item: known[0] } : null;
 }
 
 export interface Sample {
   t: number;
-  overall: number;
+  overall: number | null;
   zones: Record<string, number>;
 }
 
@@ -55,7 +60,7 @@ const TREND_WINDOW_MS = 2 * 60_000;
 const TREND_THRESHOLD = 0.03;
 
 /** Compares now with about two minutes ago; null until there is a minute of history. */
-export function trendOf(samples: Sample[], read: (s: Sample) => number | undefined = (s) => s.overall): Trend | null {
+export function trendOf(samples: Sample[], read: (s: Sample) => number | undefined = (s) => s.overall ?? undefined): Trend | null {
   if (samples.length < 2) return null;
   const last = samples[samples.length - 1];
   if (last.t - samples[0].t < 60_000) return null;

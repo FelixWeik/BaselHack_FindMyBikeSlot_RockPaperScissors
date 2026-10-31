@@ -3,13 +3,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useSize } from "@/hooks/useSize";
 import { boxOf, polygonPath, type RegionStat } from "@/lib/geometry";
-import { heatImage } from "@/lib/heat";
-import { useSettings } from "@/lib/settings";
-import type { ParkingHeatmap, ParkingLotConfig } from "@/lib/types";
+import { chanceColor } from "@/lib/heat";
+import type { ParkingLotConfig } from "@/lib/types";
 
 interface Props {
   config: ParkingLotConfig;
-  heatmap: ParkingHeatmap;
   stats: RegionStat[];
   /** Zoom on one region; omit for the whole parking. */
   focusKey?: string | null;
@@ -73,21 +71,8 @@ function useAnimatedView(target: View, animate: boolean): View {
   return view;
 }
 
-export function RegionMap({ config, heatmap, stats, focusKey, highlightKey, compact, hideChance, onSelect, className = "", style }: Props) {
+export function RegionMap({ config, stats, focusKey, highlightKey, compact, hideChance, onSelect, className = "", style }: Props) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const { palette } = useSettings();
-  const regions = config.geometry.regions;
-
-  const image = useMemo(() => heatImage(heatmap, regions, palette), [heatmap, regions, palette]);
-
-  // The previous frame stays underneath so each update fades in instead of popping.
-  const [current, setCurrent] = useState(image);
-  const [previous, setPrevious] = useState<string | null>(null);
-  if (image !== current) {
-    setPrevious(current);
-    setCurrent(image);
-  }
-
   const focused = focusKey ? stats.filter((s) => s.key === focusKey) : stats;
   const visible = focused.length > 0 ? focused : stats;
   const target = useMemo(() => viewOf(visible, compact), [visible, compact]);
@@ -97,19 +82,8 @@ export function RegionMap({ config, heatmap, stats, focusKey, highlightKey, comp
   const [sizeRef, size] = useSize();
   const metersPerPixel = Math.max(vb.w / Math.max(1, size.width), vb.h / Math.max(1, size.height));
   const fontSize = 13.5 * metersPerPixel;
-  const { origin, cellSizeMeters: cs, probabilities } = heatmap.heatmap;
-  const clipId = `clip${uid}`;
   const gridId = `grid${uid}`;
   const interactive = !!onSelect && !focusKey;
-
-  const imageProps = {
-    x: origin.x - cs / 2,
-    y: origin.y - cs / 2,
-    width: (probabilities[0]?.length ?? 0) * cs,
-    height: probabilities.length * cs,
-    preserveAspectRatio: "none",
-    clipPath: `url(#${clipId})`,
-  };
 
   return (
     <div
@@ -121,11 +95,6 @@ export function RegionMap({ config, heatmap, stats, focusKey, highlightKey, comp
     >
       <svg ref={compact ? undefined : sizeRef} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} className="block size-full">
         <defs>
-          <clipPath id={clipId}>
-            {visible.map((s) => (
-              <path key={s.key} d={polygonPath(s.region.boundary)} />
-            ))}
-          </clipPath>
           <pattern id={gridId} width={GRID_METERS} height={GRID_METERS} patternUnits="userSpaceOnUse">
             <path d={`M${GRID_METERS} 0H0V${GRID_METERS}`} fill="none" stroke="var(--map-grid)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
           </pattern>
@@ -135,13 +104,6 @@ export function RegionMap({ config, heatmap, stats, focusKey, highlightKey, comp
         <rect x={-1000} y={-1000} width={2200} height={2200} fill="var(--map-ground)" />
         {!compact && <rect x={-1000} y={-1000} width={2200} height={2200} fill={`url(#${gridId})`} />}
 
-        {stats.map((s) => (
-          <path key={s.key} d={polygonPath(s.region.boundary)} fill="var(--surface)" fillOpacity={0.55} />
-        ))}
-
-        {previous && <image href={previous} {...imageProps} />}
-        {current && <image key={current} href={current} className="heat-fade" {...imageProps} />}
-
         {stats.map((s) => {
           const isVisible = visible.includes(s);
           const isHighlight = s.key === highlightKey;
@@ -150,7 +112,6 @@ export function RegionMap({ config, heatmap, stats, focusKey, highlightKey, comp
             <path
               key={s.key}
               d={polygonPath(s.region.boundary)}
-              fill="transparent"
               stroke="var(--map-line)"
               strokeWidth={isHighlight ? 3 : 1.5}
               strokeLinejoin="round"
@@ -158,8 +119,9 @@ export function RegionMap({ config, heatmap, stats, focusKey, highlightKey, comp
               vectorEffect="non-scaling-stroke"
               role={interactive ? "button" : undefined}
               tabIndex={interactive ? 0 : undefined}
-              aria-label={interactive ? `${s.name}${hideChance ? "" : `, ${Math.round(s.chance * 100)}% chance of a spot`}. Zoom in` : undefined}
-              style={{ cursor: interactive ? "pointer" : undefined }}
+              aria-label={interactive ? `${s.name}${hideChance ? "" : s.chance === null ? ", no live data" : `, ${Math.round(s.chance * 100)}% estimated free`}. Zoom in` : undefined}
+              // A style, not an attribute: the colour eases from one measurement to the next.
+              style={{ cursor: interactive ? "pointer" : undefined, fill: hideChance ? "var(--surface)" : chanceColor(s.chance), fillOpacity: isVisible ? 1 : 0.25, transition: "fill 700ms ease" }}
               onClick={interactive ? select : undefined}
               onKeyDown={
                 interactive
@@ -177,7 +139,7 @@ export function RegionMap({ config, heatmap, stats, focusKey, highlightKey, comp
 
         {!compact &&
           visible.map((s) => {
-            const text = hideChance ? s.key : `${s.key === highlightKey ? "★ " : ""}${s.key} · ${Math.round(s.chance * 100)}%`;
+            const text = hideChance ? s.key : `${s.key === highlightKey ? "★ " : ""}${s.key} · ${s.chance === null ? "?" : `${Math.round(s.chance * 100)}%`}`;
             const w = text.length * fontSize * 0.6 + fontSize * 1.3;
             const h = fontSize * 1.8;
             return (

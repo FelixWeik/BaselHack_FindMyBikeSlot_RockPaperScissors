@@ -27,6 +27,7 @@
   --chance-good: #12a150;
   --chance-ok: #f5a524;
   --chance-bad: #e5484d;
+  --chance-unknown: #9a9a93;
   --chance-ramp: linear-gradient(to right, var(--chance-bad), var(--chance-ok) 40%, var(--chance-good) 75%);
   --warn: #8f5a00;
   --danger: #b4232a;
@@ -184,16 +185,6 @@ button {
   to {
     opacity: 0;
     transform: scale(3);
-  }
-}
-
-.heat-fade {
-  animation: heat-fade 700ms ease both;
-}
-
-@keyframes heat-fade {
-  from {
-    opacity: 0;
   }
 }
 

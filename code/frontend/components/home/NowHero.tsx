@@ -44,8 +44,18 @@ export function NowHero({ recommendation }: { recommendation: Recommendation<Par
     );
   }
 
+  if (recommendation.kind === "unknown") {
+    return (
+      <section aria-label="Recommendation" className="rise rounded-[2rem] bg-primary p-6 text-primary-fg">
+        <p className="text-sm font-semibold opacity-80">Right now</p>
+        <p className="mt-2 font-display text-5xl font-bold leading-[1.02] tracking-tight">No live data</p>
+        <p className="mt-3 font-medium opacity-80">No camera has a recent view of an open parking, so there&apos;s nothing to recommend.</p>
+      </section>
+    );
+  }
+
   const { item, stat, level } = recommendation;
-  const pct = Math.round(stat.chance * 100);
+  const pct = Math.round((stat.chance ?? 0) * 100);
   const href = `/map?p=${encodeURIComponent(item.config.id)}&z=${encodeURIComponent(stat.key)}`;
 
   return (
@@ -63,7 +73,7 @@ export function NowHero({ recommendation }: { recommendation: Recommendation<Par
         <div className="relative mt-7 flex items-end justify-between gap-4">
           <div>
             <p className="font-display text-4xl font-bold leading-none tabular-nums">{pct}%</p>
-            <p className="mt-1 text-sm font-medium">chance of a spot</p>
+            <p className="mt-1 text-sm font-medium">estimated free</p>
             <p className="text-sm font-medium">{item.openState.label}</p>
           </div>
           <span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-full bg-current">

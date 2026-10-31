@@ -7,17 +7,17 @@ import { clockInZone, openState, type OpenState } from "@/lib/schedule";
 import { getLiveSnapshot, getServerLiveSnapshot, refresh, subscribeLive } from "@/lib/store";
 import { recommend, trendOf, type HeldPick, type Sample, type Trend } from "@/lib/recommend";
 import { updateSettings, useSettings } from "@/lib/settings";
-import type { Clock, ParkingHeatmap, ParkingLotConfig } from "@/lib/types";
+import type { Clock, ParkingLotConfig } from "@/lib/types";
 import { useNow } from "./useNow";
 
 export type Connection = "live" | "offline" | "failing";
 
 export interface ParkingItem {
   config: ParkingLotConfig;
-  heatmap: ParkingHeatmap | null;
   stats: RegionStat[] | null;
-  overall: number;
-  level: Level;
+  /** Null when no zone has a measurement, or while nothing is known yet. */
+  overall: number | null;
+  level: Level | null;
   fetchedAt: number | null;
   history: Sample[];
   trend: Trend | null;
@@ -54,10 +54,9 @@ export function useLive() {
         const clock = snap.simulatedClock ?? clockInZone(config.schedule.timezone, new Date(now));
         return {
           config,
-          heatmap: entry?.heatmap ?? null,
           stats: entry?.stats ?? null,
-          overall: entry?.overall ?? 0,
-          level: levelOf(entry?.overall ?? 0),
+          overall: entry?.overall ?? null,
+          level: entry?.overall == null ? null : levelOf(entry.overall),
           fetchedAt: entry?.fetchedAt ?? null,
           history: entry?.history ?? [],
           trend: entry ? trendOf(entry.history) : null,

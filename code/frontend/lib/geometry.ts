@@ -1,4 +1,4 @@
-import type { ParkingHeatmap, ParkingLotConfig, ParkingRegion, Point } from "./types";
+import type { ParkingLotConfig, ParkingOccupancy, ParkingRegion, Point } from "./types";
 
 export interface Box {
   minX: number;
@@ -19,16 +19,15 @@ export interface RegionStat {
   key: string;
   name: string;
   region: ParkingRegion;
-  /** Mean probability (0..1) of finding a spot inside the region. */
-  chance: number;
-  level: Level;
-  /** Mean position of the region's cells, used for label placement. */
+  /** Estimated share of free capacity (0..1); null when no camera has a recent measurement, which isn't "empty". */
+  chance: number | null;
+  level: Level | null;
+  /** Used for label placement. */
   center: Point;
-  /** Number of grid cells inside the region, a proxy for its area. */
-  cells: number;
+  capacity: number;
+  /** Bikes seen, averaged across cameras. */
+  detected: number | null;
 }
-
-export const regionKey = (r: ParkingRegion, index: number) => r.id ?? String(index + 1);
 
 export const levelOf = (p: number): Level => (p >= 0.6 ? "high" : p >= 0.3 ? "medium" : "low");
 
@@ -54,52 +53,50 @@ export function pointInPolygon(p: Point, poly: Point[]): boolean {
 
 export const polygonPath = (poly: Point[]) => `M${poly.map((p) => `${p.x} ${p.y}`).join("L")}Z`;
 
-export function forEachCell(h: ParkingHeatmap, fn: (row: number, col: number, center: Point, p: number) => void) {
-  const { origin, cellSizeMeters: cs, probabilities } = h.heatmap;
-  probabilities.forEach((line, row) =>
-    line.forEach((p, col) => fn(row, col, { x: origin.x + col * cs, y: origin.y + row * cs }, p)),
-  );
+const LABEL_SAMPLES = 24;
+
+/** The mean of points inside the polygon: unlike its bounding box's centre, it stays on an L-shaped zone's body. */
+function labelPoint(boundary: Point[]): Point {
+  const box = boxOf(boundary);
+  let x = 0;
+  let y = 0;
+  let n = 0;
+  for (let i = 0; i < LABEL_SAMPLES; i++) {
+    for (let j = 0; j < LABEL_SAMPLES; j++) {
+      const p = { x: box.minX + ((i + 0.5) / LABEL_SAMPLES) * (box.maxX - box.minX), y: box.minY + ((j + 0.5) / LABEL_SAMPLES) * (box.maxY - box.minY) };
+      if (!pointInPolygon(p, boundary)) continue;
+      x += p.x;
+      y += p.y;
+      n++;
+    }
+  }
+  return n > 0 ? { x: x / n, y: y / n } : { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
 }
 
-export function analyze(config: ParkingLotConfig, heat: ParkingHeatmap): RegionStat[] {
-  const regions = config.geometry.regions;
-  const acc = regions.map(() => ({ sum: 0, n: 0, x: 0, y: 0 }));
-  const boxes = regions.map((r) => boxOf(r.boundary));
-
-  forEachCell(heat, (_r, _c, c, p) => {
-    regions.forEach((region, i) => {
-      const b = boxes[i];
-      if (c.x < b.minX || c.x > b.maxX || c.y < b.minY || c.y > b.maxY) return;
-      if (!pointInPolygon(c, region.boundary)) return;
-      const a = acc[i];
-      a.sum += p;
-      a.n += 1;
-      a.x += c.x;
-      a.y += c.y;
-    });
-  });
-
-  return regions.map((region, i) => {
-    const a = acc[i];
-    const chance = a.n > 0 ? a.sum / a.n : 0;
-    const key = regionKey(region, i);
+export function analyze(config: ParkingLotConfig, live: ParkingOccupancy): RegionStat[] {
+  return config.geometry.regions.map((region) => {
+    const zone = live.zones.find((z) => z.zoneId === region.id);
+    const chance = zone?.status === "valid" && zone.occupancy !== null ? 1 - zone.occupancy : null;
     return {
-      key,
-      name: region.name ?? `Zone ${key}`,
+      key: region.id,
+      name: region.name ?? `Zone ${region.id}`,
       region,
       chance,
-      level: levelOf(chance),
-      center: a.n > 0 ? { x: a.x / a.n, y: a.y / a.n } : { x: boxes[i].minX, y: boxes[i].minY },
-      cells: a.n,
+      level: chance === null ? null : levelOf(chance),
+      center: labelPoint(region.boundary),
+      capacity: region.slotCount,
+      detected: chance === null ? null : (zone?.detected ?? null),
     };
   });
 }
 
+/** A zone nobody can see never wins. */
 export const bestRegion = (stats: RegionStat[]): RegionStat | null =>
-  stats.reduce<RegionStat | null>((best, s) => (!best || s.chance > best.chance ? s : best), null);
+  stats.reduce<RegionStat | null>((best, s) => (s.chance !== null && (!best || s.chance > (best.chance ?? 0)) ? s : best), null);
 
-/** Area-weighted, so a small zone can't outweigh a large one. */
-export function overallChance(stats: RegionStat[]): number {
-  const cells = stats.reduce((n, s) => n + s.cells, 0);
-  return cells > 0 ? stats.reduce((sum, s) => sum + s.chance * s.cells, 0) / cells : 0;
+/** Weighted by capacity over the zones with a measurement; null when there is none. */
+export function overallChance(stats: RegionStat[]): number | null {
+  const known = stats.filter((s) => s.chance !== null);
+  const capacity = known.reduce((n, s) => n + s.capacity, 0);
+  return capacity > 0 ? known.reduce((sum, s) => sum + (s.chance ?? 0) * s.capacity, 0) / capacity : null;
 }

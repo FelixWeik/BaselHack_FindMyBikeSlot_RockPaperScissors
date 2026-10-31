@@ -25,7 +25,7 @@ export function Gauge({ chance, label, className = "" }: { chance: number; label
       aria-valuemin={label ? 0 : undefined}
       aria-valuemax={label ? 100 : undefined}
       aria-valuenow={label ? pct : undefined}
-      aria-valuetext={label ? `${pct}% chance of a spot` : undefined}
+      aria-valuetext={label ? `${pct}% estimated free` : undefined}
       className={`h-2 overflow-hidden rounded-full bg-surface-2 ${className}`}
     >
       <div className="gauge-fill h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: chanceColor(chance) }} />

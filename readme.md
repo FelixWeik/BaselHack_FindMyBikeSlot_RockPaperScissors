@@ -25,11 +25,12 @@ about which area still has space.
 
 1. **Camera node** (`code/firmware`): a low-cost Seeed XIAO ESP32S3 Sense sends a JPEG every second over WiFi.
    It recovers on its own from WiFi loss, hangs and crashes, and can be updated over the air.
-2. **Vision service** (`code/vision`): detects bikes with YOLO, maps them to the slots drawn for each camera
-   in a built-in calibration page, and reports debounced slot states.
-3. **Backend** (`code/backend`): validates and stores per-slot states and serves occupancy data.
+2. **Vision service** (`code/vision`): detects bikes with a YOLO model trained for dense racks, reports their
+   positions, and masks faces in the rare image that leaves it: the admin's calibration view.
+3. **Backend** (`code/backend`): stores the parkings, puts each bike in a zone, and merges the cameras into an
+   estimated occupancy per zone.
 4. **Web app** (`code/frontend`): live occupancy, map, forecast by time of day and week, and an
-   admin view to draw parking zones.
+   admin view to set up parkings, sub-zones and cameras.
 
 Interfaces between the components are defined in [`documentation/api.md`](documentation/api.md),
 design decisions in [`documentation/architecture.md`](documentation/architecture.md).
@@ -38,19 +39,23 @@ design decisions in [`documentation/architecture.md`](documentation/architecture
 
 - Images never leave memory: no frame is written to disk on the camera, the vision service or the backend.
   Capturing training images is a separate, explicit opt-in for the team's own test setup.
-- Only per-slot states (`free` / `occupied` / `unknown`) and timestamps are stored.
-- No identification of people or bikes; the system only counts occupancy.
+- Only the parking configuration is stored. Bike positions stay in memory for a few seconds.
+- Users never see a camera image. An admin calibrating a camera gets one view with its faces masked by
+  [Deface](https://github.com/ORB-HD/deface), or nothing if masking fails. Masking can miss a face: it reduces
+  the risk, it doesn't remove it.
+- No identification or tracking of people or bikes; the system only counts occupancy.
 
 ## Status
 
 | Component | Status |
 |---|---|
 | Camera node firmware | working on hardware |
-| Vision service: detection + slot mapping | working, tested |
-| Custom-trained bike model | in training |
-| Backend: ingest + storage | working, tested |
-| Backend: parkings + live heatmap API | working, tested |
+| Vision service: detection + anonymized capture | working, tested |
+| Custom-trained bike model | trained; see `code/vision/training/README.md` for what it was and wasn't measured on |
+| Backend: attribution, occupancy, multi-camera fusion | working, tested |
 | Web app | working; live mode against the backend, mock mode for offline demos |
+| Forecast | simulated, the backend keeps no history |
+| Authentication | none yet: this is a prototype, keep it on a trusted network |
 
 ## Quick start
 
@@ -62,15 +67,19 @@ cd code/backend
 uv sync
 uv run uvicorn app.main:app --reload --port 8000
 
-# Vision service (http://localhost:8001 = calibration page)
+# Vision service
 cd code/vision
 uv sync --group model
 uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8001
 
-# Web app (http://localhost:3000)
+# Web app (http://localhost:3000), against the backend
 cd code/frontend
 bun install
-bun run dev
+MOCK_MODE=false NEXT_PUBLIC_API_URL=http://localhost:8000 bun run dev
+
+# No camera at hand? This one plays recorded scenes, then calibrate it in the admin
+cd code/vision
+uv run python demo/demo_camera.py
 
 # Camera node: see code/firmware/README.md
 cd code/firmware
@@ -92,10 +101,10 @@ cd code/firmware && pio run
 ```
 code/
   firmware/   ESP32-S3 camera node (PlatformIO, Arduino)
-  vision/     bike detection service (YOLO), slot calibration page
-  backend/    FastAPI service, SQLite storage, pytest suite
+  vision/     bike detection service (YOLO), anonymized captures, model training
+  backend/    FastAPI service, zone attribution and occupancy, pytest suite
   frontend/   Next.js progressive web app
-  types/      shared TypeScript types for parking geometry and heatmaps
+  types/      shared TypeScript types for parking geometry and occupancy
 documentation/
   api.md            component interfaces
   architecture.md   architecture and design decisions

@@ -8,13 +8,13 @@ import { CloseIcon, ShareIcon } from "@/components/ui/Icons";
 import { Card, Gauge, MapSkeleton, Sparkline, TrendLabel } from "@/components/ui/primitives";
 import { useLive, useRecommendation, useSelection, type ParkingItem } from "@/hooks/useLive";
 import { LEVEL_LABEL, boxOf, type RegionStat } from "@/lib/geometry";
-import { chanceColor } from "@/lib/heat";
+import { UNKNOWN_COLOR, chanceColor } from "@/lib/heat";
 import { trendOf } from "@/lib/recommend";
 import { RegionMap } from "./RegionMap";
 
 function Legend() {
   return (
-    <div className="flex items-center gap-2 text-xs font-medium text-muted" role="img" aria-label="Color scale: red is a low chance of a spot, green is a high chance">
+    <div className="flex items-center gap-2 text-xs font-medium text-muted" role="img" aria-label="Color scale: red is nearly full, green is mostly free, grey is no live data">
       <span>Full</span>
       <span
         aria-hidden="true"
@@ -22,6 +22,8 @@ function Legend() {
         style={{ background: "var(--chance-ramp)" }}
       />
       <span>Free</span>
+      <span aria-hidden="true" className="ml-1 size-2 rounded-full" style={{ background: UNKNOWN_COLOR }} />
+      <span>No data</span>
     </div>
   );
 }
@@ -65,7 +67,7 @@ function ZoneRow({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const pct = Math.round(stat.chance * 100);
+  const pct = stat.chance === null ? null : Math.round(stat.chance * 100);
   const read = (s: { zones: Record<string, number> }) => s.zones[stat.key];
   const trend = trendOf(item.history, read);
   const open = item.openState.open;
@@ -95,18 +97,19 @@ function ZoneRow({
               )}
             </span>
             <span className={`flex flex-wrap items-center gap-x-2 text-sm ${selected ? "opacity-80" : "text-muted"}`}>
-              {open ? LEVEL_LABEL[stat.level] : "Closed"}
+              {!open ? "Closed" : stat.level ? LEVEL_LABEL[stat.level] : "No live data"}
+              {open && stat.detected !== null && <span className="tabular-nums">≈ {Math.round(stat.detected)} of {stat.capacity} bikes</span>}
               {open && <TrendLabel trend={trend} />}
             </span>
           </span>
-          {open && (
+          {open && pct !== null && (
             <span className="font-display text-2xl font-bold tabular-nums">
               {pct}
               <span className="text-base">%</span>
             </span>
           )}
         </span>
-        {open && <Gauge chance={stat.chance} className="mt-3 !h-1.5" />}
+        {open && stat.chance !== null && <Gauge chance={stat.chance} className="mt-3 !h-1.5" />}
       </button>
     </li>
   );
@@ -115,14 +118,16 @@ function ZoneRow({
 function MapBody({ item, zoneKey, selectZone }: { item: ParkingItem; zoneKey: string | null; selectZone: (key: string | null) => void }) {
   const recommendation = useRecommendation([item]);
   const stats = item.stats;
-  const heatmap = item.heatmap;
-  if (!stats || !heatmap) return <MapSkeleton />;
+  if (!stats) return <MapSkeleton />;
 
   const best = recommendation?.kind === "go" ? recommendation.stat : null;
   const selected = stats.find((s) => s.key === zoneKey) ?? null;
   const open = item.openState.open;
   const chance = selected ? selected.chance : item.overall;
-  const zoneHistory = item.history.map((h) => (selected ? (h.zones[selected.key] ?? 0) : h.overall));
+  const zoneHistory = item.history.flatMap((h) => {
+    const value = selected ? h.zones[selected.key] : h.overall;
+    return value === undefined || value === null ? [] : [value];
+  });
   // The map takes the shape of the lot on phones, instead of letterboxing a wide lot in a tall frame.
   const lot = boxOf(stats.flatMap((s) => s.region.boundary));
   const ratio = Math.max(1, Math.min(2, (lot.maxX - lot.minX) / Math.max(1, lot.maxY - lot.minY)));
@@ -133,7 +138,6 @@ function MapBody({ item, zoneKey, selectZone }: { item: ParkingItem; zoneKey: st
         <ViewTransition name={`parking-map-${item.config.id}`}>
           <RegionMap
             config={item.config}
-            heatmap={heatmap}
             stats={stats}
             focusKey={selected?.key}
             highlightKey={best?.key}
@@ -169,19 +173,24 @@ function MapBody({ item, zoneKey, selectZone }: { item: ParkingItem; zoneKey: st
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-muted">{selected ? selected.name : "Whole parking"}</p>
-              {open ? (
+              {!open ? (
+                <p className="font-display text-4xl font-bold leading-none tracking-tight">Closed</p>
+              ) : chance === null ? (
+                <>
+                  <p className="font-display text-4xl font-bold leading-none tracking-tight">No live data</p>
+                  <p className="mt-1 text-sm text-muted">No camera has a recent view of this.</p>
+                </>
+              ) : (
                 <>
                   <p className="font-display text-5xl font-bold leading-none tracking-tight tabular-nums">
                     {Math.round(chance * 100)}
                     <span className="text-2xl">%</span>
                   </p>
-                  <p className="mt-1 text-sm text-muted">chance of a spot</p>
+                  <p className="mt-1 text-sm text-muted">estimated free</p>
                 </>
-              ) : (
-                <p className="font-display text-4xl font-bold leading-none tracking-tight">Closed</p>
               )}
             </div>
-            {open && <Sparkline values={zoneHistory} label="Chance over the last minutes" className="h-12 w-28 shrink-0" />}
+            {open && <Sparkline values={zoneHistory} label="Estimated free spots over the last minutes" className="h-12 w-28 shrink-0" />}
           </div>
           <p className="mt-4 border-t border-border pt-3 text-sm text-muted">
             {item.openState.label} · {item.config.totalSlots} spots
