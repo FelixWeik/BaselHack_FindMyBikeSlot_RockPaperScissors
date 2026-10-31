@@ -1,0 +1,32 @@
+{
+  "config": {
+    "version": 1,
+    "id": "memox",
+    "name": "Memox bike rack",
+    "totalSlots": 1,
+    "geometry": {
+      "regions": [
+        { "id": "A", "name": "Rack north", "cameraIds": ["cam-memox-nord"], "slotCount": 1, "boundary": [{ "x": 0, "y": 0 }, { "x": 4, "y": 0 }, { "x": 4, "y": 2.5 }, { "x": 0, "y": 2.5 }] }
+      ]
+    },
+    "slotSize": { "widthMeters": 0.7, "lengthMeters": 2 },
+    "schedule": {
+      "timezone": "Europe/Zurich",
+      "weekly": {
+        "mon": [{ "start": "00:00", "end": "24:00" }],
+        "tue": [{ "start": "00:00", "end": "24:00" }],
+        "wed": [{ "start": "00:00", "end": "24:00" }],
+        "thu": [{ "start": "00:00", "end": "24:00" }],
+        "fri": [{ "start": "00:00", "end": "24:00" }],
+        "sat": [{ "start": "00:00", "end": "24:00" }],
+        "sun": [{ "start": "00:00", "end": "24:00" }]
+      }
+    },
+    "cameras": [
+      { "id": "cam-memox-nord", "name": "Memox north", "position": { "x": 2, "y": 3.5 }, "headingDeg": 270, "rangeMeters": 4 }
+    ]
+  },
+  "slots": [
+    { "deviceId": "cam-memox-nord", "slotId": "s1", "region": "A", "x": 2, "y": 1.25 }
+  ]
+}
