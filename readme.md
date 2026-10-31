@@ -59,7 +59,14 @@ design decisions in [`documentation/architecture.md`](documentation/architecture
 
 ## Quick start
 
-Requirements: [uv](https://docs.astral.sh/uv/), [Bun](https://bun.sh/), [PlatformIO](https://platformio.org/).
+Everything on one laptop, with one command. Testing with your own camera node or without one:
+[documentation/team-setup.md](documentation/team-setup.md).
+
+```bash
+scripts/start.sh
+```
+
+Or each service by hand. Requirements: [uv](https://docs.astral.sh/uv/), [Bun](https://bun.sh/), [PlatformIO](https://platformio.org/).
 
 ```bash
 # Backend (http://localhost:8000/docs)

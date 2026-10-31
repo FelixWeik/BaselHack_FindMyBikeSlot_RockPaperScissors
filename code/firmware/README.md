@@ -28,8 +28,9 @@ cp include/secrets.h.example include/secrets.h
 #    then set WiFi SSID, WiFi password and an OTA password
 ```
 
-Check `include/config.h`: `DEVICE_ID` must be unique per camera, and `VISION_FALLBACK_IP` should be
-the IP of the machine running the vision service (`ip -4 addr`).
+`DEVICE_ID` must be unique per camera, and the camera must find the laptop running the vision service. Set both
+in `secrets.h` (`DEVICE_ID`, `VISION_HOSTNAME`, `VISION_FALLBACK_IP`): they override the defaults in
+`include/config.h`, so nobody has to commit their own laptop. `scripts/start.sh` prints the values for your machine.
 
 ## Build, flash, monitor
 
@@ -103,8 +104,8 @@ Body: JPEG, 640x480
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `DEVICE_ID` | `cam-memox-nord` | camera name, unique per camera |
-| `VISION_HOSTNAME` / `VISION_FALLBACK_IP` | `tempestD` / `192.168.22.2` | target host: mDNS (`.local`) first, then static IP |
+| `DEVICE_ID` | `cam-memox-nord` | camera name, unique per camera; override in `secrets.h` |
+| `VISION_HOSTNAME` / `VISION_FALLBACK_IP` | `tempestD` / `192.168.22.2` | target host: mDNS (`.local`) first, then static IP; override in `secrets.h` |
 | `FRAME_SIZE` | `FRAMESIZE_VGA` (640×480) | resolution |
 | `JPEG_QUALITY` | `10` | 0..63, lower = sharper but larger |
 | `CAMERA_VFLIP` / `CAMERA_HMIRROR` | `1` / `0` | flip/mirror depending on mounting |
