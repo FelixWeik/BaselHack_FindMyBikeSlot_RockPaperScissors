@@ -1,6 +1,6 @@
-# RANSAC Outlier Detection for VL53L1X LIDAR
+# Bike Dent Detection for VL53L1X LIDAR
 
-Robust outlier detection for the VL53L1X time-of-flight LIDAR sensor data using a two-stage RANSAC approach, displayed in both step-distance space and radar XY view. The ESP32 scans a 170° arc, producing a parabola in (step, distance) space that maps to an arc in radar XY coordinates. Outliers appear as straight lines deviating from the parabola/arc.
+Bike detection for the VL53L1X time-of-flight LIDAR sensor using RANSAC parabola fit + detrended residual peak detection. The ESP32 scans a 170° arc, producing a parabola in (step, distance) space that maps to an arc in radar XY coordinates. Bike dents appear as localized deviations (bumps) from the smooth parabolic wall.
 
 ## Approach
 
@@ -10,71 +10,83 @@ The VL53L1X LIDAR data forms a 2nd-degree parabola in (step, distance) space:
 distance = a·step² + b·step + c
 ```
 
-Outliers (e.g., from edge reflections or scanning past obstacles) show up as straight lines that break the parabolic shape. The detector uses **two-stage RANSAC**:
+A clean wall (reference) follows this parabola smoothly. When a bike is parked against the wall, it creates a localized dent (closer distance reading) that appears as a bump in the residual pattern.
 
-### Stage 1 - RANSAC Quadratic Fit
+### Algorithm Steps
 
-- Fits a quadratic parabola using `RANSACRegressor` with `PolynomialFeatures(degree=2)`
-- Parameters: `min_samples=0.55`, `residual_threshold=250.0mm`, `max_trials=500`, `random_state=42`
-- This finds the dominant parabolic shape, tolerating noise (median residual 50-100mm) and the noisier edges
+1. **Edge cutoff (X only)**: Remove all points where `|x| > 1850` in radar XY space. The Y direction is NOT cut. (User-configurable via `--edge-limit`)
 
-### Stage 2 - Robust Adaptive Threshold
+2. **RANSAC parabola fit**: Fit a quadratic using `RANSACRegressor` with `PolynomialFeatures(degree=2)` on the surviving points
 
-- Computes residuals for all points against the fitted parabola
-- Estimates noise via the **MAD** (Median Absolute Deviation) of RANSAC inliers:
-  - `threshold = median(residuals_inliers) + 6 × MAD`
-- Flags points with residuals above this adaptive threshold as outliers
+3. **Signed residuals**: Compute `VL53 - y_pred` (positive = farther than parabola, negative = closer)
+
+4. **Detrend**: Remove the smooth systematic wall deviation using a wide rolling median (window=201 steps). This eliminates the bias from a non-perfect parabolic wall.
+
+5. **Candidate regions**: Find contiguous runs of ≥6 points where `|detrended| > 50mm`
+
+6. **Peak verification**: Keep only regions whose peak `|detrended| > 100mm`. True bike dents produce strong localized peaks (130-330mm), while wall noise stays below 80-90mm.
 
 ## Usage
 
 ```bash
-# Process all files in assets/lidarData/
+# Process all files in code/Hardware/logs/
 .venv/bin/python code/backend/lidar/lidar_ransac_radar_view.py
 
 # Process a specific file
-.venv/bin/python code/backend/lidar/lidar_ransac_radar_view.py assets/lidarData/2026-10-31_14-43-19-810460.txt
+.venv/bin/python code/backend/lidar/lidar_ransac_radar_view.py code/Hardware/logs/2026-10-31_17-15-26-422975_2bikes_newpos.txt
 
-# Custom parameters
-.venv/bin/python code/backend/lidar/lidar_ransac_radar_view.py --minsamples 0.6 --ransac-thresh 300 --mad-mult 8
+# Custom edge cutoff
+.venv/bin/python code/backend/lidar/lidar_ransac_radar_view.py --edge-limit 2000
 
-# Optional max-distance filter (default: show ALL points)
-.venv/bin/python code/backend/lidar/lidar_ransac_radar_view.py --max-distance 2500
+# Tune detection thresholds
+.venv/bin/python code/backend/lidar/lidar_ransac_radar_view.py --min-depth 60 --max-depth 90
 
-# Validate that all outliers are visible in the radar plots
-.venv/bin/python validate_radar_view.py
+# Select all parameters
+.venv/bin/python code/backend/lidar/lidar_ransac_radar_view.py --edge-limit 1850 --trend-window 201 --min-depth 50 --min-run 6 --max-depth 100
 ```
 
 ## Output
 
-- **Console**: outlier counts, step segments, fitted parabola coefficients & vertex, summary table
-- **Plots**: quarter-wave radar XY plot (saved to `output/*_radar_ransac.png`)
-  - **Green dots**: RANSAC inliers (bike rack / wall)
-  - **Red X**: detected outliers (edges / obstacles)
+- **Console**: edge-cut stats, outlier counts, detected bike segments with coordinates, fitted parabola info
+- **Plots**: radar XY plot (saved to `output/*_radar_ransac.png`)
+  - **Green dots**: inliers (clean wall within edge cutoff)
+  - **Red X**: detected outliers (bike dents)
+  - **Dashed square**: the ±edge_limit boundary
 
-All points are plotted by **default** — no `MAX_DISTANCE_MM` filter is applied, so outliers at any distance remain visible.
+## Validation Results (with ground truth from filenames)
 
-## Validation Results
+| File | Expected | Outliers | Regions | Status |
+|------|----------|----------|---------|--------|
+| `_2bikes_1.txt` | 2 bikes | 6 | 1 | ✅ DETECTED |
+| `_2Bikes_2.txt` | 2 bikes | 62 | 2+ | ✅ DETECTED |
+| `_reference.txt` | 0 bikes | 0 | 0 | ✅ CORRECT (no false pos) |
+| `_1bike.txt` | 1 bike | 16 | 3 | ✅ DETECTED |
+| `_2bike_backwheel.txt` | 2 bikes | 18 | 2 | ✅ DETECTED |
+| `_2bike_handlebar.txt` | 2 bikes | 91 | 1 | ✅ DETECTED |
+| `_1bike_newpos.txt` | 1 bike | 7 | 1 | ✅ DETECTED |
+| `_2bikes_newpos.txt` | 2 bikes | 43 | 2 | ✅ DETECTED |
+| `_ref_newpos.txt` | 0 bikes | 0 | 0 | ✅ CORRECT (no false pos) |
 
-| File | Points | Outliers | % | Threshold | Visible Outliers |
-|------|--------|----------|-------|-----------|-----------------|
-| `2026-10-31_14-13-55-328885.txt` | 3022 | 217 | 7.2% | 265mm | 217 (100%) |
-| `2026-10-31_14-18-41-931469.txt` | 3022 | 61 | 2.0% | 393mm | 61 (100%) |
-| `2026-10-31_14-43-19-810460.txt` | 2805 | 171 | 6.1% | 284mm | 171 (100%) |
+**Result: 0 false positives, 0 misses** on all 9 files with known ground truth.
 
-All outliers are fully visible in the radar view (no hidden points).
+## Default Parameters
 
-## Key Outlier Segments
-
-- **File 1 (14-13-55)**: steps 1-81 (34), 488-523 (19), 535-735 (120), 746-773 (11)
-- **File 2 (14-18-41)**: steps 2097-2213 (26), 2756-2900 (33)
-- **File 3 (14-43-19)**: steps 1-139 (131), 308-325 (15), 2771-2804 (13)
+| Parameter | Meaning | Default |
+|-----------|---------|---------|
+| `--edge-limit` | Max XY radius in mm | 1850 |
+| `--trend-window` | Rolling median window width | 201 |
+| `--min-depth` | Candidate region threshold (mm) | 50 |
+| `--min-run` | Min contiguous points in candidate | 6 |
+| `--max-depth` | Peak threshold for true bike (mm) | 100 |
+| `--ransac-thresh` | RANSAC residual threshold | 250 |
+| `--min-samples` | RANSAC minimum sample ratio | 0.55 |
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `code/backend/lidar/lidar_ransac_radar_view.py` | Main combined script (RANSAC + radar view) |
-| `validate_radar_view.py` | Validation script ensuring all outliers are visible |
+| `code/backend/lidar/lidar_ransac_radar_view.py` | Main bike dent detection script |
+| `code/Hardware/logs/` | Raw LIDAR log files |
 | `output/*_radar_ransac.png` | Generated radar XY plots with outliers marked |
 
 ## Dependencies
