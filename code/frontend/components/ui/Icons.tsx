@@ -54,6 +54,7 @@ export const ArrowRightIcon = icon(<path d="M5 12h14M13 6l6 6-6 6" />);
 export const ChevronRightIcon = icon(<path d="m9 6 6 6-6 6" />);
 export const CloseIcon = icon(<path d="M6 6l12 12M18 6 6 18" />);
 export const PlusIcon = icon(<path d="M12 5v14M5 12h14" />);
+export const PencilIcon = icon(<path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0 0-3l-1-1a2.1 2.1 0 0 0-3 0L4 16v4Z" />);
 export const UndoIcon = icon(<path d="M8 6 4 10l4 4M4 10h10a5 5 0 0 1 0 10h-3" />);
 export const TrashIcon = icon(<path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13" />);
 export const ShareIcon = icon(<path d="M12 15V4M8 8l4-4 4 4M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6" />);

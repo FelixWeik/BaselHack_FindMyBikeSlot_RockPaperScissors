@@ -85,7 +85,7 @@ export function analyze(config: ParkingLotConfig, heat: ParkingHeatmap): RegionS
     const key = regionKey(region, i);
     return {
       key,
-      name: `Zone ${key}`,
+      name: region.name ?? `Zone ${key}`,
       region,
       chance,
       level: levelOf(chance),

@@ -12,11 +12,13 @@ interface Props {
   parking: ParkingLotConfig;
   points: Point[];
   onChange: (points: Point[]) => void;
+  mode?: "create" | "move";
 }
 
 /** Tap to place corners on the parking plan, in metres, snapped to the heatmap's 0.5 m grid. */
-export function PolygonEditor({ parking, points, onChange }: Props) {
+export function PolygonEditor({ parking, points, onChange, mode = "create" }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<{ x: number; y: number; points: Point[] } | null>(null);
   const existing = parking.geometry.regions.map((r) => r.boundary);
   const box = boxOf(existing.flat());
   // Leaves room around the plan so a new zone can extend beyond it.
@@ -30,11 +32,43 @@ export function PolygonEditor({ parking, points, onChange }: Props) {
   const scale = Math.max(vb.w, vb.h);
 
   const addPoint = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (mode === "move" && points.length >= 3) return;
     const svg = svgRef.current;
     const matrix = svg?.getScreenCTM()?.inverse();
     if (!svg || !matrix) return;
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(matrix);
     onChange([...points, { x: Math.round(p.x / SNAP) * SNAP, y: Math.round(p.y / SNAP) * SNAP }]);
+  };
+
+  const moveStart = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (mode !== "move" || points.length < 3) return;
+    const svg = svgRef.current;
+    const matrix = svg?.getScreenCTM()?.inverse();
+    if (!svg || !matrix) return;
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(matrix);
+    dragRef.current = { x: p.x, y: p.y, points: points.map((pt) => ({ ...pt })) };
+    svg.setPointerCapture(e.pointerId);
+  };
+
+  const moveDrag = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (mode !== "move" || !dragRef.current) return;
+    const svg = svgRef.current;
+    const matrix = svg?.getScreenCTM()?.inverse();
+    if (!svg || !matrix) return;
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(matrix);
+    const dx = Math.round((p.x - dragRef.current.x) / SNAP) * SNAP;
+    const dy = Math.round((p.y - dragRef.current.y) / SNAP) * SNAP;
+    onChange(dragRef.current.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy })));
+  };
+
+  const moveEnd = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (mode !== "move") return;
+    dragRef.current = null;
+    try {
+      svgRef.current?.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
@@ -43,8 +77,10 @@ export function PolygonEditor({ parking, points, onChange }: Props) {
         ref={svgRef}
         viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
         role="img"
-        aria-label={`Plan of ${parking.name}. Tap to place the corners of the new zone. ${points.length} placed.`}
-        onPointerDown={addPoint}
+        aria-label={`Plan of ${parking.name}. ${mode === "move" ? "Drag to move the zone." : "Tap to place the corners of the new zone."} ${points.length} placed.`}
+        onPointerDown={mode === "move" ? moveStart : addPoint}
+        onPointerMove={moveDrag}
+        onPointerUp={moveEnd}
         className="block max-h-[38dvh] w-full cursor-crosshair touch-none rounded-2xl bg-[var(--map-ground)]"
       >
         <defs>
@@ -56,7 +92,7 @@ export function PolygonEditor({ parking, points, onChange }: Props) {
         {existing.map((b, i) => (
           <path key={i} d={polygonPath(b)} fill="var(--surface)" fillOpacity={0.7} stroke="var(--muted)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
         ))}
-        {points.length >= 3 && <path d={polygonPath(points)} fill="var(--chance-good)" fillOpacity={0.35} />}
+        {points.length >= 3 && <path d={polygonPath(points)} fill="var(--chance-good)" fillOpacity={mode === "move" ? 0.22 : 0.35} />}
         {points.length >= 2 && (
           <polyline
             points={points.map((p) => `${p.x},${p.y}`).join(" ")}
@@ -72,7 +108,7 @@ export function PolygonEditor({ parking, points, onChange }: Props) {
         ))}
       </svg>
       <div className="flex items-center justify-between gap-2 text-sm text-muted">
-        <span aria-live="polite">{points.length < 3 ? `Tap ${3 - points.length} more corner${points.length === 2 ? "" : "s"} on the plan` : `${points.length} corners`}</span>
+        <span aria-live="polite">{mode === "move" ? "Drag the zone to move it" : points.length < 3 ? `Tap ${3 - points.length} more corner${points.length === 2 ? "" : "s"} on the plan` : `${points.length} corners`}</span>
         <button
           type="button"
           disabled={points.length === 0}

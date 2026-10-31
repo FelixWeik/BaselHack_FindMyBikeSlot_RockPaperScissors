@@ -32,6 +32,7 @@ const config: ParkingLotConfig = {
   totalSlots: 10,
   slotSize: { widthMeters: 1, lengthMeters: 2 },
   schedule: weekly("08:00", "18:00"),
+  cameras: [],
   geometry: {
     regions: [
       { id: "small", boundary: square(0, 1) },
