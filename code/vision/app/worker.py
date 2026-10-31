@@ -16,6 +16,8 @@ from .detector import Detector, ModelNotReady, TooDark
 log = logging.getLogger("uvicorn.error")
 
 SendObservation = Callable[[dict], None]
+# Called with (device_id, jpeg, bikes, status) after each analysis; used by the presenter view.
+OnResult = Callable[[str, bytes, list, str], None]
 
 
 @dataclass(frozen=True)
@@ -26,9 +28,10 @@ class Pending:
 
 
 class FrameWorker:
-    def __init__(self, detector: Detector, send: SendObservation):
+    def __init__(self, detector: Detector, send: SendObservation, on_result: OnResult | None = None):
         self.detector = detector
         self.send = send
+        self.on_result = on_result
         self._mailboxes: OrderedDict[str, Pending] = OrderedDict()
         self._wake = threading.Condition()
         self._stopping = False
@@ -58,6 +61,8 @@ class FrameWorker:
             # Only the error's type: a message could quote the input.
             log.error("Detection failed for %s: %s", device_id, type(err).__name__)
             status = "failed"
+        if self.on_result:
+            self.on_result(device_id, frame.jpeg, bikes, status)
         self.send(
             {
                 "device_id": device_id,

@@ -8,6 +8,7 @@
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <esp_camera.h>
 #include <esp_task_wdt.h>
 
@@ -20,11 +21,20 @@ const int LED_PIN = 21;  // user LED, active low
 IPAddress visionIp;               // resolved after WiFi is up
 int failures = 0;                 // consecutive capture/upload failures
 unsigned long wifiLostSince = 0;  // 0 while connected
+WiFiMulti wifiMulti;
+
+struct WifiNetwork {
+  const char *ssid;
+  const char *password;
+};
+#ifndef WIFI_NETWORKS  // older secrets.h with a single network
+#define WIFI_NETWORKS {{WIFI_SSID, WIFI_PASSWORD}}
+#endif
+const WifiNetwork WIFI_LIST[] = WIFI_NETWORKS;
 
 // ---------- Status LED ----------
 // short flash  = frame delivered
-// fast blink   = connecting to WiFi
-// steady on    = last attempt failed
+// steady on    = connecting to WiFi, or the last upload failed
 
 void ledOn() { digitalWrite(LED_PIN, LOW); }
 void ledOff() { digitalWrite(LED_PIN, HIGH); }
@@ -110,6 +120,16 @@ bool cameraInit() {
   sensor_t *s = esp_camera_sensor_get();
   s->set_vflip(s, CAMERA_VFLIP);
   s->set_hmirror(s, CAMERA_HMIRROR);
+  // The rack is shot against bright windows: let the DSP-assisted auto exposure lift the dark
+  // foreground and allow more gain instead of exposing for the sky.
+  s->set_exposure_ctrl(s, 1);
+  s->set_aec2(s, 1);
+  s->set_ae_level(s, 1);
+  s->set_gain_ctrl(s, 1);
+  s->set_gainceiling(s, GAINCEILING_8X);
+  s->set_whitebal(s, 1);
+  s->set_awb_gain(s, 1);
+  s->set_lenc(s, 1);  // lens shading correction, removes the dark corners
   if (s->id.PID == OV3660_PID) {
     // OV3660 defaults are dark and oversaturated; values from the Espressif CameraWebServer example.
     s->set_brightness(s, 1);
@@ -134,27 +154,31 @@ const char *wifiStatusText(wl_status_t s) {
   }
 }
 
+// Scans and joins the strongest known network, so the same firmware works in the office WiFi and
+// on a phone hotspot without reflashing.
 bool wifiConnect() {
-  Serial.printf("Connecting to '%s' ...\n", WIFI_SSID);
+  static bool listAdded = false;
+  if (!listAdded) {
+    for (const WifiNetwork &n : WIFI_LIST) wifiMulti.addAP(n.ssid, n.password);
+    listAdded = true;
+  }
+  Serial.printf("Connecting to the strongest of %u known networks ...\n", sizeof(WIFI_LIST) / sizeof(WIFI_LIST[0]));
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);  // modem sleep adds latency and causes dropped uploads
   WiFi.setAutoReconnect(true);
-  WiFi.disconnect();     // clear any half-open previous session
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
-    watchdogFeed();
-    (millis() / 250) % 2 ? ledOn() : ledOff();
-    delay(50);
+  ledOn();
+  while (wifiMulti.run(5000) != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
+    watchdogFeed();  // each run() scans and blocks for up to 5 s
   }
   ledOff();
   if (WiFi.status() != WL_CONNECTED) {
     Serial.printf("WiFi failed: %s\n", wifiStatusText(WiFi.status()));
     return false;
   }
-  Serial.printf("WiFi connected: IP %s, gateway %s, RSSI %d dBm\n", WiFi.localIP().toString().c_str(),
-                WiFi.gatewayIP().toString().c_str(), WiFi.RSSI());
+  Serial.printf("WiFi connected to '%s': IP %s, gateway %s, RSSI %d dBm\n", WiFi.SSID().c_str(),
+                WiFi.localIP().toString().c_str(), WiFi.gatewayIP().toString().c_str(), WiFi.RSSI());
   return true;
 }
 
@@ -176,10 +200,22 @@ bool wifiEnsure() {
 
 // ---------- Upload ----------
 
+// One TCP connection is kept open across frames (HTTP/1.1 keep-alive). A fresh connection per
+// frame costs a TCP handshake and slow-start every time, which dominates upload latency on WiFi.
+WiFiClient visionClient;
+HTTPClient http;
+
+// Drops the kept-alive connection so the next frame reconnects (after errors or an IP change).
+void visionDisconnect() {
+  http.end();
+  visionClient.stop();
+}
+
 // Prefer mDNS so the vision host can change IP; fall back to the static IP from config.h.
 void resolveVision() {
   static bool mdnsStarted = false;
   if (!mdnsStarted) mdnsStarted = MDNS.begin(DEVICE_ID);
+  IPAddress previous = visionIp;
   IPAddress ip = MDNS.queryHost(VISION_HOSTNAME, 3000);
   if (ip != IPAddress(0, 0, 0, 0)) {
     visionIp = ip;
@@ -188,21 +224,24 @@ void resolveVision() {
     visionIp.fromString(VISION_FALLBACK_IP);
     Serial.printf("%s.local not found, using fallback IP %s\n", VISION_HOSTNAME, VISION_FALLBACK_IP);
   }
+  if (visionIp != previous) visionDisconnect();
 }
 
 // Returns the HTTP status code (200 = ok, negative = transport error).
-int sendFrame(camera_fb_t *fb) {
-  HTTPClient http;
-  String url = "http://" + visionIp.toString() + ":" + VISION_PORT + VISION_PATH;
+int sendFrame(camera_fb_t *fb, bool *reused) {
+  *reused = visionClient.connected();
+  http.setReuse(true);
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
   http.setTimeout(HTTP_TIMEOUT_MS);
-  http.begin(url);
+  http.begin(visionClient, visionIp.toString(), VISION_PORT, VISION_PATH);
   http.addHeader("Content-Type", "image/jpeg");
   http.addHeader("X-Device-Id", DEVICE_ID);
   http.addHeader("X-RSSI", String(WiFi.RSSI()));
   http.addHeader("X-Uptime-S", String(millis() / 1000));
   int code = http.POST(fb->buf, fb->len);  // stream straight from the frame buffer, no copy
-  http.end();
+  if (code > 0) http.getString();          // drain the body, otherwise the connection can't be reused
+  http.end();                              // keeps the socket open if the server allowed keep-alive
+  if (code < 0) visionClient.stop();       // a broken socket must not be reused
   return code;
 }
 
@@ -278,11 +317,13 @@ void loop() {
       Serial.println("Capture failed");
       countFailure();
     } else {
-      int code = sendFrame(fb);
+      bool reused = false;
+      int code = sendFrame(fb, &reused);
       size_t len = fb->len;
       esp_camera_fb_return(fb);  // return the buffer immediately so the driver can refill it
-      Serial.printf("Frame: %u bytes -> HTTP %d (%lu ms) | RSSI %d dBm | consecutive failures: %d\n", len, code,
-                    millis() - cycleStart, WiFi.RSSI(), code == 200 ? 0 : failures + 1);
+      Serial.printf("Frame: %u bytes -> HTTP %d (%lu ms, %s) | RSSI %d dBm | consecutive failures: %d\n", len,
+                    code, millis() - cycleStart, reused ? "reused" : "new conn", WiFi.RSSI(),
+                    code == 200 ? 0 : failures + 1);
       if (code == 200) {
         failures = 0;
         ledFlash();

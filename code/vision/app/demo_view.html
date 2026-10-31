@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camera view · Find my Bike Slot</title>
+<style>
+  :root { color-scheme: dark; --bg: #0f1210; --panel: #1a1f1b; --text: #eef2ee; --muted: #9aa59c; --green: #22c55e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+         font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0 auto 0 0; font-weight: 600; }
+  .pill { background: var(--panel); border-radius: 999px; padding: 6px 14px; font-size: 14px; color: var(--muted); }
+  .live::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+                  background: var(--green); margin-right: 8px; animation: pulse 1.5s infinite; }
+  .live.stale::before { background: #f59e0b; animation: none; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  select { background: var(--panel); color: var(--text); border: 0; border-radius: 999px; padding: 6px 12px; font: inherit; }
+  main { flex: 1; display: grid; place-items: center; padding: 0 24px 24px; }
+  img { max-width: 100%; max-height: calc(100vh - 140px); border-radius: 16px; background: var(--panel); }
+  .count { color: var(--text); font-weight: 600; }
+  #empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Camera view</h1>
+  <select id="camera" aria-label="Camera"></select>
+  <span class="pill"><span class="count" id="bikes">–</span> bikes detected</span>
+  <span class="pill">Faces masked</span>
+  <span class="pill live" id="live">Live</span>
+</header>
+<main>
+  <img id="frame" alt="Latest camera frame with detected bikes" hidden>
+  <p id="empty">Waiting for a camera…</p>
+</main>
+<script>
+  const select = document.getElementById("camera");
+  let frame = document.getElementById("frame");
+  const params = new URLSearchParams(location.search);
+
+  async function refreshCameras() {
+    const cameras = await fetch("/demo/cameras", { cache: "no-store" }).then((r) => r.json());
+    const wanted = select.value || params.get("camera");
+    select.replaceChildren(...cameras.map((c) => new Option(c.id, c.id)));
+    if (cameras.some((c) => c.id === wanted)) select.value = wanted;
+    select.hidden = cameras.length < 2;
+    const current = cameras.find((c) => c.id === select.value);
+    document.getElementById("empty").hidden = Boolean(current);
+    if (!current) return null;
+    document.getElementById("bikes").textContent = current.bikes;
+    document.getElementById("live").classList.toggle("stale", current.age_s > 5);
+    return current.id;
+  }
+
+  async function tick() {
+    try {
+      const id = await refreshCameras();
+      if (id) {
+        // Load off-screen first, so the picture never flickers while the next one arrives.
+        const next = new Image();
+        next.src = `/demo/cameras/${encodeURIComponent(id)}/frame.jpg?t=${Date.now()}`;
+        next.alt = frame.alt;
+        await next.decode();
+        frame.replaceWith(next);
+        frame = next;
+      }
+    } catch {
+      document.getElementById("live").classList.add("stale");
+    }
+    setTimeout(tick, 1000);
+  }
+  tick();
+</script>
+</body>
+</html>

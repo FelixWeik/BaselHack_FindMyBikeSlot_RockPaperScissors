@@ -31,3 +31,5 @@ class Settings:
     # Opt-in dataset capture for model training. Unset = frames are never written to disk.
     record_dir: Path | None = field(default_factory=lambda: _env_path("RECORD_DIR"))
     record_every_s: float = field(default_factory=lambda: float(os.getenv("RECORD_EVERY_S", "10")))
+    # Presenter view at /demo (latest frame per camera, faces masked, bikes boxed). Off unless DEMO_VIEW=1.
+    demo_view: bool = field(default_factory=lambda: os.getenv("DEMO_VIEW", "") == "1")

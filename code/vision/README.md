@@ -19,22 +19,18 @@ uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port
 
 The model loads in the background at startup. Frames received before that are accepted and reported as `not_ready`.
 
-## Demo without a camera
+## Presenter view
 
-`demo/demo_camera.py` plays prepared scenes of a bike rack (`demo/frames/`) and sends them exactly like
-a camera node, one frame per second. Bikes arrive and leave every 10 s, so the whole system can be shown
-on one screen: the calibration page at `http://localhost:8001/` and the web app side by side.
+To show or film what a camera sees, start the service with `DEMO_VIEW=1` and open `http://localhost:8001/demo`.
+It shows the latest frame of each camera with the detected bikes boxed and faces masked, refreshed every second.
 
 ```bash
-uv run python demo/demo_camera.py            # vision, backend and web app must be running
+DEMO_VIEW=1 uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8001
 ```
 
-It registers its slots itself (`demo/cam-demo.slots.json`); the backend maps them to the parking
-`demo` (`code/backend/parkings/demo.json`). The scenes are composed from photos the team took of a bike
-shelter in Basel: an empty shelter with bikes cut out of other photos, number plate blurred. Every scene
-is checked to be classified correctly by the default model.
-
-## Calibrate slots
+- Off by default: without `DEMO_VIEW=1` the `/demo` routes don't exist.
+- Only the latest frame of each camera is kept, in memory, and replaced by the next one.
+- Frames are masked like a calibration capture (see below); if masking fails, no image is sent.
 
 ## What happens to a frame
 
@@ -88,6 +84,7 @@ RECORD_DIR=recordings uv run --group model uvicorn app.main:create_app --factory
 | `CAPTURE_TIMEOUT_S` | `5` | how long a calibration capture waits for a frame |
 | `RECORD_DIR` | unset | enables training data capture |
 | `RECORD_EVERY_S` | `10` | capture interval per camera |
+| `DEMO_VIEW` | unset | `1` enables the presenter view at `/demo` |
 
 ## Endpoints
 
@@ -95,6 +92,7 @@ RECORD_DIR=recordings uv run --group model uvicorn app.main:create_app --factory
 |---|---|---|
 | `POST` | `/api/v1/frames` | frame from a camera node (see `documentation/api.md`) |
 | `POST` | `/api/v1/devices/{id}/calibration-capture` | the camera's next frame, anonymized |
+| `GET` | `/demo` | presenter view, only with `DEMO_VIEW=1` |
 | `GET` | `/healthz` | liveness, whether the model is ready and whether recording is on |
 
 ## Tests
