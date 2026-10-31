@@ -17,7 +17,7 @@ about which area still has space.
 
 ```
 ┌──────────────┐  JPEG / 1 s   ┌──────────────┐  slot states  ┌──────────────┐  heatmap   ┌──────────────┐
-│ Camera node  │ ────────────▶ │    Vision    │ ────────────▶ │   Backend    │ ─────────▶ │   Web app    │
+│ Camera node  │ ────────────> │    Vision    │ ────────────> │   Backend    │ ─────────> │   Web app    │
 │ ESP32-S3     │  HTTP POST    │  detection   │  JSON         │ FastAPI      │  JSON      │ Next.js PWA  │
 │ + OV3660     │               │  (in memory) │               │ + SQLite     │            │              │
 └──────────────┘               └──────────────┘               └──────────────┘            └──────────────┘
