@@ -66,7 +66,7 @@ Field names are camelCase.
 ```
 GET    /api/v1/parkings                   → ParkingLotConfig[]   (code/types/parkingLotConfig.ts)
 PUT    /api/v1/parkings/{id}              ← ParkingLotConfig
-DELETE /api/v1/parkings/{id}
+DELETE /api/v1/parkings/{id}              → 204, also when the id is unknown (idempotent)
 GET    /api/v1/parkings/{id}/occupancy    → ParkingOccupancy     (code/types/parkingOccupancy.ts)
 GET    /api/v1/parkings/{id}/cameras      → each camera's own reading, for diagnosis
 GET    /api/v1/devices                    → Device[]             (cameras heard since the backend started)

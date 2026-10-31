@@ -95,7 +95,9 @@ def test_delete(client):
     client.put("/api/v1/parkings/parking-1", json=parking())
     assert client.delete("/api/v1/parkings/parking-1").status_code == 204
     assert client.get("/api/v1/parkings").json() == []
-    assert client.delete("/api/v1/parkings/parking-1").status_code == 404
+    # Gone already, or never saved: still a success, so the admin's save queue doesn't get stuck on it.
+    assert client.delete("/api/v1/parkings/parking-1").status_code == 204
+    assert client.delete("/api/v1/parkings/never-saved").status_code == 204
 
 
 def test_refuses_mismatched_id(client):
