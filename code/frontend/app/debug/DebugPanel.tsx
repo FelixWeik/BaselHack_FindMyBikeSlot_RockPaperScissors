@@ -5,7 +5,6 @@ import { Card, Segmented, SectionTitle } from "@/components/ui/primitives";
 import { useLive } from "@/hooks/useLive";
 import { MOCK_MODE } from "@/lib/api";
 import { DAYS, formatHour } from "@/lib/forecast";
-import { regionKey } from "@/lib/geometry";
 import { refresh } from "@/lib/store";
 import type { Clock, DebugState, ForcedState } from "@/lib/types";
 
@@ -13,6 +12,7 @@ const FORCED: { value: ForcedState; label: string }[] = [
   { value: "normal", label: "Normal" },
   { value: "full", label: "Full" },
   { value: "empty", label: "Empty" },
+  { value: "unknown", label: "No data" },
 ];
 
 const DEMO_START: Clock = { day: 1, hour: 8 };
@@ -127,8 +127,8 @@ export function DebugPanel() {
 
       <section aria-label="Force a zone" className="flex flex-col gap-3">
         {items.flatMap(({ config }) =>
-          config.geometry.regions.map((region, i) => {
-            const zone = regionKey(region, i);
+          config.geometry.regions.map((region) => {
+            const zone = region.id;
             const key = `${config.id}:${zone}`;
             return (
               <Card key={key} className="flex flex-col gap-2 p-4">

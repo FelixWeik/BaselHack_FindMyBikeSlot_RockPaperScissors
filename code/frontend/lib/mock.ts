@@ -1,33 +1,17 @@
 import { occupancy } from "./forecast";
-import { boxOf, pointInPolygon, regionKey } from "./geometry";
 import { clockInZone } from "./schedule";
-import type { Clock, DebugState, Device, ForcedState, OpeningWindow, ParkingCamera, ParkingHeatmap, ParkingLotConfig, ParkingRegion, Weekday } from "./types";
+import type { CameraView, Clock, DebugState, Device, ForcedState, OpeningWindow, ParkingCamera, ParkingLotConfig, ParkingOccupancy, ParkingRegion, Weekday, ZoneOccupancy } from "./types";
 
-const CELL = 0.5;
 const TIMEZONE = "Europe/Zurich";
 
 export const MOCK_ENABLED = process.env.MOCK_MODE !== "false";
 
 export const mockDisabled = () => Response.json({ error: "mock routes are disabled" }, { status: 404 });
 
-interface Blob {
-  x: number;
-  y: number;
-  s: number;
-  phase: number;
-}
-
-interface MockParking {
-  config: ParkingLotConfig;
-  width: number;
-  height: number;
-  blobs: Blob[];
-}
-
 const poly = (...pts: [number, number][]): ParkingRegion["boundary"] => pts.map(([x, y]) => ({ x, y }));
 
 /** A shape on a mock camera photo, from pixels of its 2000x1500 preview to normalized image coordinates. */
-const onPhoto = (...pts: [number, number][]): ParkingRegion["imagePolygon"] => pts.map(([x, y]) => ({ x: Math.round((x / 2000) * 1000) / 1000, y: Math.round((y / 1500) * 1000) / 1000 }));
+const onPhoto = (...pts: [number, number][]): CameraView["polygon"] => pts.map(([x, y]) => ({ x: Math.round((x / 2000) * 1000) / 1000, y: Math.round((y / 1500) * 1000) / 1000 }));
 
 const CALIBRATED_AT = "2026-10-29T08:45:00Z";
 
@@ -70,6 +54,10 @@ function config(
   };
 }
 
+interface MockParking {
+  config: ParkingLotConfig;
+}
+
 const PARKINGS: MockParking[] = [
   {
     config: config(
@@ -79,22 +67,14 @@ const PARKINGS: MockParking[] = [
       schedule(ALL_DAYS, { start: "06:30", end: "20:00" }),
       [
         { id: "A", name: "North row", slotCount: 18, boundary: poly([2, 2], [18, 2], [18, 12], [12, 12], [12, 22], [2, 22]) },
-        { id: "B", name: "Center row", slotCount: 16, cameraIds: ["cam-p1-1"], boundary: poly([20, 2], [40, 2], [40, 10], [34, 22], [20, 22]), imagePolygon: onPhoto([20, 1215], [1610, 680], [1400, 610], [20, 930]) },
-        { id: "C", name: "East wing", slotCount: 12, cameraIds: ["cam-p1-2"], boundary: poly([43, 2], [56, 2], [56, 22], [40, 22]), imagePolygon: onPhoto([420, 1370], [1870, 900], [1720, 700], [90, 1010]) },
+        { id: "B", name: "Center row", slotCount: 16, boundary: poly([20, 2], [40, 2], [40, 10], [34, 22], [20, 22]) },
+        { id: "C", name: "East wing", slotCount: 12, boundary: poly([43, 2], [56, 2], [56, 22], [40, 22]) },
       ],
       [
-        { id: "cam-p1-1", name: "Gate cam", position: { x: 18, y: 24 }, headingDeg: 330, rangeMeters: 20, calibratedAt: CALIBRATED_AT },
-        { id: "cam-p1-2", name: "Corner cam", position: { x: 53, y: 25 }, headingDeg: 245, rangeMeters: 18, calibratedAt: CALIBRATED_AT },
+        { id: "cam-p1-1", name: "Gate cam", position: { x: 18, y: 24 }, headingDeg: 330, rangeMeters: 20, calibratedAt: CALIBRATED_AT, views: [{ regionId: "B", polygon: onPhoto([20, 1215], [1610, 680], [1400, 610], [20, 930]) }] },
+        { id: "cam-p1-2", name: "Corner cam", position: { x: 53, y: 25 }, headingDeg: 245, rangeMeters: 18, calibratedAt: CALIBRATED_AT, views: [{ regionId: "C", polygon: onPhoto([420, 1370], [1870, 900], [1720, 700], [90, 1010]) }] },
       ],
     ),
-    width: 58,
-    height: 24,
-    blobs: [
-      { x: 6, y: 8, s: 6, phase: 0 },
-      { x: 28, y: 8, s: 7, phase: 1.7 },
-      { x: 26, y: 18, s: 5, phase: 3.1 },
-      { x: 50, y: 12, s: 6, phase: 4.6 },
-    ],
   },
   {
     config: config(
@@ -103,18 +83,11 @@ const PARKINGS: MockParking[] = [
       44,
       schedule(WEEKDAYS, { start: "06:00", end: "21:00" }),
       [
-        { id: "D", name: "Ramp side", slotCount: 20, cameraIds: ["cam-p2-1"], boundary: poly([2, 2], [24, 2], [24, 10], [14, 10], [14, 16], [2, 16]), imagePolygon: onPhoto([170, 530], [1300, 1500], [2000, 1500], [2000, 1060], [240, 490]) },
+        { id: "D", name: "Ramp side", slotCount: 20, boundary: poly([2, 2], [24, 2], [24, 10], [14, 10], [14, 16], [2, 16]) },
         { id: "E", name: "Back wall", slotCount: 24, boundary: poly([26, 2], [46, 2], [46, 16], [26, 16]) },
       ],
-      [{ id: "cam-p2-1", name: "Ramp cam", position: { x: 18, y: 20 }, headingDeg: 275, rangeMeters: 20, calibratedAt: CALIBRATED_AT }],
+      [{ id: "cam-p2-1", name: "Ramp cam", position: { x: 18, y: 20 }, headingDeg: 275, rangeMeters: 20, calibratedAt: CALIBRATED_AT, views: [{ regionId: "D", polygon: onPhoto([170, 530], [1300, 1500], [2000, 1500], [2000, 1060], [240, 490]) }] }],
     ),
-    width: 48,
-    height: 18,
-    blobs: [
-      { x: 10, y: 6, s: 6, phase: 2 },
-      { x: 36, y: 10, s: 7, phase: 0.6 },
-      { x: 24, y: 8, s: 4, phase: 3.8 },
-    ],
   },
   {
     config: config(
@@ -122,15 +95,9 @@ const PARKINGS: MockParking[] = [
       "Pizza",
       8,
       schedule(WEEKDAYS, { start: "07:00", end: "18:30" }),
-      [{ id: "F", name: "Front strip", slotCount: 8, cameraIds: ["cam-p3-1"], boundary: poly([2, 2], [22, 2], [22, 14], [8, 14], [2, 8]), imagePolygon: onPhoto([170, 848], [1790, 815], [1650, 720], [290, 735]) }],
-      [{ id: "cam-p3-1", name: "Street cam", position: { x: 12, y: 18 }, headingDeg: 300, rangeMeters: 16, calibratedAt: CALIBRATED_AT }],
+      [{ id: "F", name: "Front strip", slotCount: 8, boundary: poly([2, 2], [22, 2], [22, 14], [8, 14], [2, 8]) }],
+      [{ id: "cam-p3-1", name: "Street cam", position: { x: 12, y: 18 }, headingDeg: 300, rangeMeters: 16, calibratedAt: CALIBRATED_AT, views: [{ regionId: "F", polygon: onPhoto([170, 848], [1790, 815], [1650, 720], [290, 735]) }] }],
     ),
-    width: 24,
-    height: 16,
-    blobs: [
-      { x: 9, y: 7, s: 5, phase: 1.1 },
-      { x: 17, y: 9, s: 4, phase: 4 },
-    ],
   },
 ];
 
@@ -162,64 +129,29 @@ const NEW_CAMERAS = [
 
 export function mockDevices(): Device[] {
   const seeded = PARKINGS.flatMap((p) => p.config.cameras);
-  return [...NEW_CAMERAS, ...seeded].map(({ id, name }) => ({ id, name, kind: "camera", snapshotUrl: SNAPSHOTS[id], lastSeen: new Date().toISOString() }));
+  return [...NEW_CAMERAS, ...seeded].map(({ id, name }) => ({ id, name, kind: "camera", lastSeen: new Date().toISOString(), online: true }));
 }
 
-export function mockHeatmap(id: string, now: number, debug: DebugState): ParkingHeatmap | null {
+/** The photo standing in for a mock camera's next frame. */
+export const mockSnapshot = (id: string): string | undefined => SNAPSHOTS[id];
+
+export function mockOccupancy(id: string, now: number, debug: DebugState): ParkingOccupancy | null {
   const config = mockParkings().find((c) => c.id === id);
   if (!config) return null;
-  const seed = PARKINGS.find((p) => p.config.id === id);
-  const regions = config.geometry.regions;
-  const boxes = regions.map((r) => boxOf(r.boundary));
-  // A parking created in the admin has no hand-tuned hotspots: one per sub-zone gives it the same movement.
-  const blobs: Blob[] = seed?.blobs ?? boxes.map((b, i) => ({ x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, s: Math.max(2, (b.maxX - b.minX) / 2), phase: i * 1.7 }));
-
   const clock: Clock = debug.clock ?? clockInZone(TIMEZONE, new Date(now));
   const base = occupancy(id, clock.day, clock.hour);
-  // The grid grows with the plan, since the admin can place a sub-zone anywhere.
-  const all = boxOf(regions.flatMap((r) => r.boundary));
-  const minX = Math.min(0, Math.floor(all.minX));
-  const minY = Math.min(0, Math.floor(all.minY));
-  const cols = Math.round((Math.max(seed?.width ?? 0, Math.ceil(all.maxX)) - minX) / CELL);
-  const rows = Math.round((Math.max(seed?.height ?? 0, Math.ceil(all.maxY)) - minY) / CELL);
-  const probabilities: number[][] = [];
+  const updatedAt = new Date(now).toISOString();
 
-  for (let row = 0; row < rows; row++) {
-    const line: number[] = [];
-    for (let col = 0; col < cols; col++) {
-      const x = minX + CELL / 2 + col * CELL;
-      const y = minY + CELL / 2 + row * CELL;
-      const idx = regions.findIndex(
-        (r, i) =>
-          x >= boxes[i].minX && x <= boxes[i].maxX && y >= boxes[i].minY && y <= boxes[i].maxY && pointInPolygon({ x, y }, r.boundary),
-      );
-      if (idx < 0) {
-        line.push(0);
-        continue;
-      }
-      const forced: ForcedState = debug.zones[`${id}:${regionKey(regions[idx], idx)}`] ?? "normal";
-      let p: number;
-      if (forced === "full") p = 0.03;
-      else if (forced === "empty") p = 0.97;
-      else {
-        let g = 0;
-        for (const b of blobs) {
-          const w = 0.65 + 0.35 * Math.sin(now / 45000 + b.phase);
-          g += w * Math.exp(-((x - b.x) ** 2 + (y - b.y) ** 2) / (2 * b.s * b.s));
-        }
-        const noise = 0.015 * Math.sin(now / 5000 + col * 0.11 + row * 0.17);
-        p = 1 - clamp01(base * (0.2 + 1.0 * g) + noise);
-      }
-      line.push(Math.round(clamp01(p) * 100) / 100);
-    }
-    probabilities.push(line);
-  }
-
-  return {
-    version: 1,
-    geometry: config.geometry,
-    heatmap: { origin: { x: minX + CELL / 2, y: minY + CELL / 2 }, cellSizeMeters: CELL, probabilities },
-  };
+  const zones = config.geometry.regions.map((region, index): ZoneOccupancy => {
+    const forced: ForcedState = debug.zones[`${id}:${region.id}`] ?? "normal";
+    if (forced === "unknown") return { zoneId: region.id, capacity: region.slotCount, detected: null, occupancy: null, overflow: false, status: "unknown", cameraCount: 0, updatedAt: null };
+    // Each zone drifts around the parking's rhythm on its own, so they don't all read the same.
+    const drift = 0.8 + 0.3 * Math.sin(now / 45000 + index * 1.7);
+    const estimate = forced === "full" ? 0.97 : forced === "empty" ? 0.03 : clamp01(base * drift + 0.015 * Math.sin(now / 5000 + index));
+    const detected = Math.round(estimate * region.slotCount);
+    return { zoneId: region.id, capacity: region.slotCount, detected, occupancy: Math.round(estimate * 100) / 100, overflow: false, status: "valid", cameraCount: 1, updatedAt };
+  });
+  return { parkingId: id, updatedAt, zones };
 }
 
 const g = globalThis as unknown as { __fmbsDebug?: DebugState };

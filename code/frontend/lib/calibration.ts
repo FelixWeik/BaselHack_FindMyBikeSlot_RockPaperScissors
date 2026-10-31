@@ -2,13 +2,16 @@ import { type AdminParking, type AdminRegion, GRID, newParking, nextRegionId, pl
 import { pointInPolygon } from "./geometry";
 import type { Point } from "./types";
 
-/** A sub-zone being calibrated: drawn on the camera view, then placed on the plan. */
+/** A sub-zone being calibrated: drawn on the camera view, then placed on the plan unless it's already there. */
 export interface DraftSubZone {
   id: string;
   name: string;
+  /** Belongs to the physical zone, so changing it reaches every camera watching it. */
   capacity: number;
   imagePolygon: Point[];
   boundary: Point[];
+  /** A physical zone of the parking that another camera may watch too; false for one this draft creates. */
+  existing: boolean;
 }
 
 export type DraftTarget = { kind: "existing"; parkingId: string } | { kind: "new"; name: string };
@@ -48,31 +51,36 @@ export function polygonsOverlap(a: Point[], b: Point[]) {
 /** Why the draft can't leave the drawing step; empty when it can. */
 export function drawingIssues(subZones: DraftSubZone[]): string[] {
   if (subZones.length === 0) return ["Draw at least one sub-zone on the camera view."];
-  return subZones.flatMap((zone) => {
-    const label = zone.name.trim() || "A sub-zone";
-    return [
-      ...(zone.name.trim() ? [] : ["A sub-zone has no name."]),
-      ...(zone.imagePolygon.length < 3 ? [`${label} isn't drawn on the camera view yet.`] : selfCrosses(zone.imagePolygon) ? [`${label} crosses itself on the camera view.`] : []),
-      ...(zone.capacity >= 1 ? [] : [`${label} needs a capacity of at least 1.`]),
-    ];
-  });
-}
-
-/** Why the draft can't leave the plan step; empty when it can. */
-export function planIssues(draft: CalibrationDraft): string[] {
+  const drawn = subZones.filter((zone) => zone.imagePolygon.length >= 3);
   return [
-    ...(draft.target.kind === "new" && !draft.target.name.trim() ? ["Give the new zone a name."] : []),
-    ...draft.subZones.filter((zone) => zone.boundary.length < 3 || selfCrosses(zone.boundary)).map((zone) => `${zone.name} crosses itself on the plan.`),
+    ...subZones.flatMap((zone) => {
+      const label = zone.name.trim() || "A sub-zone";
+      return [
+        ...(zone.name.trim() ? [] : ["A sub-zone has no name."]),
+        ...(zone.imagePolygon.length < 3 ? [`${label} isn't drawn on the camera view yet.`] : selfCrosses(zone.imagePolygon) ? [`${label} crosses itself on the camera view.`] : []),
+        ...(zone.capacity >= 1 ? [] : [`${label} needs a capacity of at least 1.`]),
+      ];
+    }),
+    // A bike standing in both would be ambiguous, so unlike on the plan this isn't just a warning.
+    ...drawn.flatMap((a, i) => drawn.slice(i + 1).flatMap((b) => (polygonsOverlap(a.imagePolygon, b.imagePolygon) ? [`${a.name} and ${b.name} overlap on the camera view.`] : []))),
   ];
 }
 
-/** Sub-zones overlapping on the plan: allowed, but each square then only counts for the first one. */
-export function overlapWarnings(parking: AdminParking, draft: CalibrationDraft): string[] {
-  const ids = new Set(draft.subZones.map((zone) => zone.id));
+/** Why the draft's destination isn't usable yet; empty when it is. */
+export const targetIssues = (target: DraftTarget): string[] => (target.kind === "new" && !target.name.trim() ? ["Give the new zone a name."] : []);
+
+/** Why the draft can't leave the plan step; empty when it can. */
+export const planIssues = (draft: CalibrationDraft): string[] =>
+  draft.subZones.filter((zone) => zone.boundary.length < 3 || selfCrosses(zone.boundary)).map((zone) => `${zone.name} crosses itself on the plan.`);
+
+/** The sub-zones once the zone they land in changes: coordinates and physical zones mean nothing on another plan. */
+export const forNewTarget = (subZones: DraftSubZone[], cameraId: string): DraftSubZone[] =>
+  subZones.map((zone, index) => ({ ...zone, id: zone.existing ? `${cameraId}-moved-${index}` : zone.id, existing: false, boundary: [] }));
+
+/** Sub-zones overlapping on the plan: allowed, as the plan only draws them, but probably a mistake. */
+export function overlapWarnings(parking: AdminParking): string[] {
   const regions = parking.geometry.regions;
-  return regions.flatMap((a, i) =>
-    regions.slice(i + 1).flatMap((b) => ((ids.has(a.id) || ids.has(b.id)) && polygonsOverlap(a.boundary, b.boundary) ? [`${a.name ?? a.id} overlaps ${b.name ?? b.id} on the plan.`] : [])),
-  );
+  return regions.flatMap((a, i) => regions.slice(i + 1).flatMap((b) => (polygonsOverlap(a.boundary, b.boundary) ? [`${a.name ?? a.id} overlaps ${b.name ?? b.id} on the plan.`] : [])));
 }
 
 /** The parking the draft will land in, before the draft is applied. */
@@ -112,36 +120,37 @@ export function placeSubZones(subZones: DraftSubZone[], parking: AdminParking): 
   });
 }
 
-/** The parking once the draft is in: this camera's sub-zones replaced, everything else untouched. */
+/** The parking once the draft is in: this camera's views replaced. A physical zone only ever goes when deleted itself. */
 export function applyCalibration(parking: AdminParking, draft: CalibrationDraft, calibratedAt: string): AdminParking {
   const { camera } = draft;
+  const taken = new Set(parking.geometry.regions.map((region) => region.id));
+  // A draft's ids only tell its sub-zones apart: the ones that stay get a real id from the zone they land in.
+  const finalIds = new Map(
+    draft.subZones.map((zone) => {
+      if (taken.has(zone.id)) return [zone.id, zone.id];
+      const id = nextRegionId(taken);
+      taken.add(id);
+      return [zone.id, id];
+    }),
+  );
   const toRegion = (zone: DraftSubZone, previous?: AdminRegion): AdminRegion => ({
     ...previous,
-    id: zone.id,
+    id: finalIds.get(zone.id) ?? zone.id,
     name: zone.name.trim(),
     slotCount: zone.capacity,
     boundary: zone.boundary,
-    imagePolygon: zone.imagePolygon,
-    cameraIds: [...new Set([...(previous?.cameraIds ?? []), camera.id])],
   });
 
-  const regions = parking.geometry.regions.flatMap((region) => {
+  const known = new Set(parking.geometry.regions.map((region) => region.id));
+  const regions = parking.geometry.regions.map((region) => {
     const zone = draft.subZones.find((z) => z.id === region.id);
-    if (zone) return [toRegion(zone, region)];
-    return region.cameraIds?.includes(camera.id) ? [] : [region];
+    return zone ? toRegion(zone, region) : region;
   });
-  // A draft's ids only tell its sub-zones apart: the ones that stay get a real id from the zone they land in.
-  const taken = new Set(parking.geometry.regions.map((region) => region.id));
-  const added = draft.subZones
-    .filter((zone) => !taken.has(zone.id))
-    .map((zone) => {
-      const id = nextRegionId(taken);
-      taken.add(id);
-      return toRegion({ ...zone, id });
-    });
+  const added = draft.subZones.filter((zone) => !known.has(zone.id)).map((zone) => toRegion(zone));
+  const views = draft.subZones.map((zone) => ({ regionId: finalIds.get(zone.id) ?? zone.id, polygon: zone.imagePolygon }));
 
-  const known = parking.cameras.find((c) => c.id === camera.id);
-  const cameras = known ? parking.cameras.map((c) => (c.id === camera.id ? { ...c, calibratedAt } : c)) : [...parking.cameras, { ...camera, calibratedAt }];
+  const existing = parking.cameras.find((c) => c.id === camera.id);
+  const cameras = existing ? parking.cameras.map((c) => (c.id === camera.id ? { ...c, calibratedAt, views } : c)) : [...parking.cameras, { ...camera, calibratedAt, views }];
   return { ...withRegions(parking, [...regions, ...added]), cameras };
 }
 
@@ -149,11 +158,13 @@ export function applyCalibration(parking: AdminParking, draft: CalibrationDraft,
 export function startDraft(camera: { id: string; name: string }, parkings: AdminParking[]): CalibrationDraft {
   const home = parkings.find((parking) => parking.cameras.some((c) => c.id === camera.id));
   if (!home) return { camera, subZones: [], target: parkings[0] ? { kind: "existing", parkingId: parkings[0].id } : { kind: "new", name: "" } };
+  const views = home.cameras.find((c) => c.id === camera.id)?.views ?? [];
   return {
     camera,
     target: { kind: "existing", parkingId: home.id },
-    subZones: home.geometry.regions
-      .filter((region) => region.cameraIds?.includes(camera.id))
-      .map((region) => ({ id: region.id, name: region.name ?? region.id, capacity: region.slotCount ?? 0, imagePolygon: region.imagePolygon ?? [], boundary: region.boundary })),
+    subZones: views.flatMap((view) => {
+      const region = home.geometry.regions.find((r) => r.id === view.regionId);
+      return region ? [{ id: region.id, name: region.name ?? region.id, capacity: region.slotCount, imagePolygon: view.polygon, boundary: region.boundary, existing: true }] : [];
+    }),
   };
 }

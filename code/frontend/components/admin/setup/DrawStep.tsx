@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { TrashIcon, UndoIcon } from "@/components/ui/Icons";
 import { Card, SectionTitle } from "@/components/ui/primitives";
-import type { DraftSubZone } from "@/lib/calibration";
+import type { AdminParking } from "@/lib/adminModel";
+import type { DraftSubZone, DraftTarget } from "@/lib/calibration";
 import type { Point } from "@/lib/types";
 import { NumberField } from "../NumberField";
 import { StepNav } from "./StepNav";
 
+const NEW = "__new__";
 const CORNERS = 4;
 const NUDGE = 0.01;
 const COLORS = ["#e5484d", "#3e63dd", "#12a150", "#d97706", "#8e4ec6", "#0e9aa7"];
@@ -21,7 +23,15 @@ interface Props {
   cameraName: string;
   cameraId: string;
   image: string | null;
-  onPhoto: (url: string) => void;
+  capturing: boolean;
+  captureError: string | null;
+  onRecapture: () => void;
+  target: AdminParking;
+  draftTarget: DraftTarget;
+  parkings: AdminParking[];
+  /** A recalibrated camera stays in its zone. */
+  locked: boolean;
+  onTarget: (target: DraftTarget) => void;
   subZones: DraftSubZone[];
   onChange: (subZones: DraftSubZone[]) => void;
   issues: string[];
@@ -29,7 +39,7 @@ interface Props {
   onNext: () => void;
 }
 
-export function DrawStep({ cameraName, cameraId, image, onPhoto, subZones, onChange, issues, onBack, onNext }: Props) {
+export function DrawStep({ cameraName, cameraId, image, capturing, captureError, onRecapture, target, draftTarget, parkings, locked, onTarget, subZones, onChange, issues, onBack, onNext }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [aspect, setAspect] = useState(4 / 3);
   const [drawing, setDrawing] = useState<Point[]>([]);
@@ -62,12 +72,25 @@ export function DrawStep({ cameraName, cameraId, image, onPhoto, subZones, onCha
       setSelectedId(waiting.id);
       return;
     }
+    const fresh = newZoneFields();
+    onChange([...subZones, { ...fresh, imagePolygon }]);
+    setSelectedId(fresh.id);
+  };
+
+  /** A sub-zone of its own, not yet on the plan. */
+  const newZoneFields = () => {
     const taken = new Set(subZones.map((zone) => zone.id));
     let n = subZones.length + 1;
     while (taken.has(`${cameraId}-${n}`)) n++;
-    const id = `${cameraId}-${n}`;
-    onChange([...subZones, { id, name: `Aisle ${n}`, capacity: 0, imagePolygon, boundary: [] }]);
-    setSelectedId(id);
+    return { id: `${cameraId}-${n}`, name: `Aisle ${n}`, capacity: 0, boundary: [], existing: false };
+  };
+
+  /** One polygon is either a new physical sub-zone or another view of one the parking already has. */
+  const linkZone = (zone: DraftSubZone, value: string) => {
+    const region = target.geometry.regions.find((r) => r.id === value);
+    const fields = region ? { id: region.id, name: region.name ?? region.id, capacity: region.slotCount, boundary: region.boundary, existing: true } : newZoneFields();
+    patch(zone.id, fields);
+    setSelectedId(fields.id);
   };
 
   const addCorner = (e: React.PointerEvent) => {
@@ -204,38 +227,69 @@ export function DrawStep({ cameraName, cameraId, image, onPhoto, subZones, onCha
             </svg>
           </div>
         ) : (
-          <Card className="grid gap-2 p-6 text-center">
-            <p className="font-medium">{cameraName} has no snapshot to show.</p>
-            <p className="text-sm text-muted">Take a photo from where the camera sits and pick it below.</p>
+          <Card className="grid min-h-64 place-content-center gap-2 p-6 text-center">
+            {capturing ? (
+              <>
+                <p className="font-medium">Asking {cameraName} for a view…</p>
+                <p className="text-sm text-muted">Faces are masked before the view reaches this page.</p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium">{cameraName} couldn&apos;t give a view.</p>
+                <p role="alert" className="text-sm text-muted">
+                  {captureError ?? "The capture failed."}
+                </p>
+              </>
+            )}
           </Card>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p aria-live="polite" className="w-full min-w-0 text-sm text-muted sm:w-auto sm:flex-1">
-            {image ? hint : "The photo stays in this browser, only the shapes drawn on it are saved."}
+            {image ? `${hint} This view stays in this tab, only the shapes are saved.` : ""}
           </p>
           <div className="flex gap-2">
             <button type="button" disabled={drawing.length === 0} onClick={() => setDrawing(drawing.slice(0, -1))} className="tap inline-flex min-h-11 items-center gap-1.5 rounded-full bg-surface-2 px-4 font-semibold disabled:opacity-40">
               <UndoIcon size={18} />
               Undo
             </button>
-            <label className="tap inline-flex min-h-11 cursor-pointer items-center rounded-full bg-surface-2 px-4 font-semibold focus-within:ring-2 focus-within:ring-primary">
-              {image ? "Use a photo" : "Pick a photo"}
-              <input
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) onPhoto(URL.createObjectURL(file));
-                }}
-              />
-            </label>
+            <button type="button" disabled={capturing} onClick={onRecapture} className="tap inline-flex min-h-11 items-center rounded-full bg-surface-2 px-4 font-semibold disabled:opacity-40">
+              New capture
+            </button>
           </div>
         </div>
       </div>
 
       <div className="grid min-w-0 gap-4">
+        <Card className="grid gap-3 p-4">
+          <SectionTitle>Zone</SectionTitle>
+          {locked ? (
+            <p>{target.name}</p>
+          ) : (
+            <label className="grid gap-2 text-sm">
+              <span className="text-muted">This camera watches</span>
+              <select
+                className="min-h-11 w-full min-w-0 rounded-2xl bg-surface-2 px-3"
+                value={draftTarget.kind === "existing" ? draftTarget.parkingId : NEW}
+                onChange={(e) => onTarget(e.target.value === NEW ? { kind: "new", name: "" } : { kind: "existing", parkingId: e.target.value })}
+              >
+                {parkings.map((parking) => (
+                  <option key={parking.id} value={parking.id}>
+                    {parking.name}
+                  </option>
+                ))}
+                <option value={NEW}>A new zone</option>
+              </select>
+            </label>
+          )}
+          {draftTarget.kind === "new" && (
+            <label className="grid gap-2 text-sm">
+              <span className="text-muted">Name of the new zone</span>
+              <input className="min-h-11 w-full min-w-0 rounded-2xl bg-surface-2 px-3" placeholder="Parking 1" value={draftTarget.name} onChange={(e) => onTarget({ kind: "new", name: e.target.value })} />
+            </label>
+          )}
+        </Card>
+
         <Card className="grid gap-3 p-4">
           <SectionTitle>Sub-zones</SectionTitle>
           {subZones.length === 0 && <p className="text-sm text-muted">Nothing drawn yet.</p>}
@@ -253,7 +307,22 @@ export function DrawStep({ cameraName, cameraId, image, onPhoto, subZones, onCha
                   <TrashIcon size={18} />
                 </button>
               </div>
-              <NumberField label="Capacity (bikes)" min={0} integer value={zone.capacity} onCommit={(capacity) => patch(zone.id, { capacity })} />
+              {target.geometry.regions.length > 0 && (
+                <label className="grid gap-2 text-sm">
+                  <span className="text-muted">Sub-zone on the plan</span>
+                  <select className="min-h-11 w-full min-w-0 rounded-2xl bg-surface px-3" value={zone.existing ? zone.id : NEW} onChange={(e) => linkZone(zone, e.target.value)}>
+                    <option value={NEW}>A new sub-zone</option>
+                    {target.geometry.regions
+                      .filter((region) => region.id === zone.id || !subZones.some((other) => other.id === region.id))
+                      .map((region) => (
+                        <option key={region.id} value={region.id}>
+                          {region.name ?? region.id} · {region.slotCount} slots
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+              <NumberField key={zone.id} label={zone.existing ? "Capacity, shared with every camera watching it" : "Capacity (bikes)"} min={1} integer value={zone.capacity} onCommit={(capacity) => patch(zone.id, { capacity })} />
               {zone.imagePolygon.length === 0 && <p className="text-sm text-muted">Tap its {CORNERS} corners on the view.</p>}
             </div>
           ))}

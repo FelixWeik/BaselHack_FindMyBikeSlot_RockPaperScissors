@@ -3,12 +3,12 @@
 ## Overview
 
 ```
-Camera node ──JPEG──▶ Vision ──slot states──▶ Backend ──heatmap──▶ Web app
- (edge)               (LAN)                   (API + DB)            (PWA)
+Camera node ──JPEG──▶ Vision ──bike boxes──▶ Backend ──occupancy──▶ Web app
+ (edge)               (LAN)                  (API + DB)              (PWA)
 ```
 
 The system is split along the data it handles. Only the first hop carries images; everything after
-the vision service works with slot states. This keeps privacy-sensitive data in one place and lets
+the vision service works with bike boxes and numbers. This keeps privacy-sensitive data in one place and lets
 each component be developed and tested on its own against the contract in [`api.md`](api.md).
 
 ## Components
@@ -30,40 +30,50 @@ each component be developed and tested on its own against the contract in [`api.
 
 ### Vision service (`code/vision`)
 
-- Receives frames on `POST /api/v1/frames`, detects bikes with Ultralytics YOLO (pretrained `yolo11n`
-  or a custom-trained model) and maps detections to the slot polygons configured for each `X-Device-Id`.
-- **Ground footprint matching:** only the bottom 30 % of a bike box is compared with a slot polygon,
-  because the upper part of a bike overlaps neighbouring slots in a perspective view.
-- **Debouncing:** a slot changes state only after 3 consecutive frames agree, so passers-by and
-  single-frame detection dropouts do not cause flicker.
-- **Fail-safe:** the model loads in the background so the camera's 5 s HTTP timeout is never hit;
-  detection errors report `unknown` instead of stale or guessed states; a backend outage never blocks
-  frame intake.
-- Slot polygons are drawn on the live frame in a built-in calibration page and stored as JSON per camera.
-- Frames stay in memory (latest per camera, for calibration). Training data capture is a separate,
-  explicit opt-in (`RECORD_DIR`).
-- The detector is an interface (`detect(jpeg) -> boxes`), so the model can be swapped without touching
-  the rest of the pipeline; tests use a fake detector and run without PyTorch.
+Stateless: it knows cameras by name, and nothing about parkings or zones.
+
+- Receives frames on `POST /api/v1/frames`, answers at once, and analyses them on a single worker thread.
+  Each camera has a mailbox holding its latest frame, so a slow model drops frames rather than queuing them or
+  hitting the camera's 5 s HTTP timeout. Cameras take turns.
+- Detects bikes with Ultralytics YOLO (the model trained in `training/`) and sends their normalized boxes to the backend.
+- **Fail-safe:** a frame too dark to read, a model failure or a model still loading are reported as such, never as
+  an empty scene. A backend outage never blocks frame intake.
+- **Calibration capture:** waits for the next frame, masks faces with Deface in memory, and refuses to answer if that fails.
+- No frame is kept once analysed. Training data capture is a separate, explicit opt-in (`RECORD_DIR`).
+- The detector and the anonymizer are interfaces, so they can be swapped without touching the rest of the pipeline;
+  tests use fakes and run without PyTorch.
 
 ### Backend (`code/backend`)
 
-- **FastAPI + Pydantic:** payloads are validated at the boundary; invalid data is rejected with `422`
-  and never stored.
-- **SQLite:** a single file, no server to operate, enough for a few writes per second. Slot states are
-  stored as JSON per observation.
-- **App factory (`create_app`)** lets every test run against its own temporary database.
-- **Parking configuration** (`parkings/<id>.json`) holds the site plan in metres and links each camera
-  slot (`deviceId` + `slotId`) to a position on it. This is the bridge between camera pixels and the map.
-- **Heatmap:** each 0.5 m cell gets the chance of a free slot. Nearby slots dominate (Gaussian weight,
-  σ = 1.5 m), far cells blend towards the region's free share, regions without current data show 0.5.
-  Cameras silent for more than 60 s are treated as offline, so the app never shows stale availability.
+- **FastAPI + Pydantic:** payloads are validated at the boundary; invalid data is rejected with `422`.
+- **SQLite for the configuration only.** Measurements stay in memory: they are worthless after 30 s anyway, and a restart
+  just shows `unknown` for a few seconds.
+- **App factory (`create_app`)** lets every test run against its own temporary database, clock and camera.
+- **Attribution (`attribution.py`)** puts each bike in a zone: at its horizontal centre, trying points from 95 % down to
+  65 % of the box's height. It's pure functions, with no idea where the boxes come from.
+- **Occupancy (`occupancy.py`)** is computed when read, from the latest boxes and the current configuration.
+  A zone is `unknown` when no camera has a valid, recent measurement. Merging is one replaceable function.
+
+### Decisions
+
+| Decision | Why |
+|---|---|
+| Attribution in the backend, not in vision | The backend owns the polygons. Vision stays stateless, and a changed polygon applies at once to the last frames. |
+| Vision reports uncalibrated cameras too | That's how a new camera reaches the admin's list, and it's what makes its first calibration possible. |
+| A median of the last 5 frames per camera | A person walking past or a borderline confidence moves the count by a bike or two for a second. It's one line, not tracking. |
+| Averaging before bounding at 100 % | Cameras reading 25/20 and 15/20 agree on a full zone; bounding first would call it 87 %. `overflow` keeps the anomaly visible. |
+| Plain coloured polygons instead of a grid | A zone has one value. A smooth grid would show precision that the measurement doesn't have. |
+| Overlapping polygons of a camera are refused | An ambiguous bike has no right answer; the wizard blocks it and the API refuses it. Overlaps on the *plan* only warn, as they don't affect counting. |
+| Trained detector instead of stock `yolo26n` | The stock model badly under-counts dense racks, which is the case that matters. See `code/vision/training/README.md`. |
 
 ### Web app (`code/frontend`)
 
 - Next.js progressive web app, installable on phones.
-- Views: live occupancy, map, forecast by time of day and weekday, settings, and an admin view to
-  draw parking zone polygons.
-- Shared types in `code/types` define parking geometry and heatmaps for frontend and backend.
+- Views: live occupancy, map, forecast by time of day and weekday, settings, and an admin view to set up
+  parkings, sub-zones and cameras.
+- The map colours each sub-zone from its merged occupancy, grey when unknown. No camera image reaches a user.
+- The forecast is still simulated (`lib/forecast.ts`), as the backend keeps no history.
+- Shared types in `code/types` define parking geometry and occupancy for frontend and backend.
 
 ## Quality
 

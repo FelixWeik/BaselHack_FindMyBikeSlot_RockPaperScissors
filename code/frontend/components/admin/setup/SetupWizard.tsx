@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { ListSkeleton } from "@/components/ui/primitives";
 import { flushAdmin, putParking, useAdmin, type AdminState } from "@/lib/adminStore";
-import { applyCalibration, type CalibrationDraft, drawingIssues, overlapWarnings, placeSubZones, planIssues, startDraft, targetParking } from "@/lib/calibration";
+import { captureCalibration } from "@/lib/api";
+import { applyCalibration, type CalibrationDraft, drawingIssues, forNewTarget, overlapWarnings, placeSubZones, planIssues, startDraft, targetIssues, targetParking } from "@/lib/calibration";
 import { AdminUnreachable } from "../AdminUnreachable";
 import { CameraStep } from "./CameraStep";
 import { DrawStep } from "./DrawStep";
@@ -56,19 +57,40 @@ function Wizard({ admin }: { admin: AdminState }) {
     const camera = cameraFor(params.get("camera"));
     return camera ? startDraft(camera, parkings) : null;
   });
-  const [photo, setPhoto] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
-  // A photo only lives in this browser tab, as an object URL.
+  // Asks for a fresh capture whenever the camera changes or the admin wants a new one.
+  const [attempt, setAttempt] = useState(0);
+  const [shot, setShot] = useState<{ key: string; url: string | null; error: string | null } | null>(null);
+  const cameraId = draft?.camera.id;
+  const shotKey = cameraId ? `${cameraId}:${attempt}` : null;
   useEffect(() => {
-    if (!photo) return;
-    return () => URL.revokeObjectURL(photo);
-  }, [photo]);
+    if (!cameraId || !shotKey) return;
+    let current = true;
+    captureCalibration(cameraId).then(
+      (blob) => {
+        if (current) setShot({ key: shotKey, url: URL.createObjectURL(blob), error: null });
+      },
+      (error: unknown) => {
+        if (current) setShot({ key: shotKey, url: null, error: error instanceof Error ? error.message : "The capture failed" });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [cameraId, shotKey]);
+
+  // The capture only lives in this browser tab, as an object URL, until a newer one replaces it or the wizard closes.
+  const shotUrl = shot?.url;
+  useEffect(() => {
+    if (!shotUrl) return;
+    return () => URL.revokeObjectURL(shotUrl);
+  }, [shotUrl]);
 
   const target = useMemo(() => (draft ? targetParking(draft.target, parkings) : null), [draft, parkings]);
   const placed = useMemo(() => (draft && target ? { ...draft, subZones: placeSubZones(draft.subZones, target) } : null), [draft, target]);
 
-  const drawIssues = draft ? drawingIssues(draft.subZones) : [];
+  const drawIssues = draft ? [...targetIssues(draft.target), ...drawingIssues(draft.subZones)] : [];
   const toReview = placed ? planIssues(placed) : [];
   const reachable = !draft ? 1 : drawIssues.length > 0 ? 2 : toReview.length > 0 ? 3 : 4;
   const step = Math.min(Math.max(1, Number(params.get("step")) || 1), reachable);
@@ -81,9 +103,8 @@ function Wizard({ admin }: { admin: AdminState }) {
     window.history.pushState(null, "", url);
   };
 
-  const device = draft && devices.find((d) => d.id === draft.camera.id);
   const home = draft && parkings.some((p) => p.cameras.some((c) => c.id === draft.camera.id));
-  const image = photo ?? device?.snapshotUrl ?? null;
+  const capturing = Boolean(shotKey) && shot?.key !== shotKey;
 
   const finish = async () => {
     if (!placed || !target) return;
@@ -104,17 +125,27 @@ function Wizard({ admin }: { admin: AdminState }) {
           devices={devices}
           onPick={(camera) => {
             setDraft(startDraft(camera, parkings));
-            setPhoto(null);
             go(2, camera.id);
           }}
         />
       )}
-      {step === 2 && draft && (
+      {step === 2 && draft && target && (
         <DrawStep
           cameraName={draft.camera.name}
           cameraId={draft.camera.id}
-          image={image}
-          onPhoto={setPhoto}
+          image={capturing ? null : (shot?.url ?? null)}
+          capturing={capturing}
+          captureError={capturing ? null : (shot?.error ?? null)}
+          onRecapture={() => setAttempt(attempt + 1)}
+          target={target}
+          draftTarget={draft.target}
+          parkings={parkings}
+          locked={Boolean(home)}
+          onTarget={(next) => {
+            // Renaming a new zone keeps what's drawn on it; another zone has another plan and other sub-zones.
+            const samePlan = next.kind === "new" && draft.target.kind === "new";
+            setDraft({ ...draft, target: next, subZones: samePlan ? draft.subZones : forNewTarget(draft.subZones, draft.camera.id) });
+          }}
           subZones={draft.subZones}
           onChange={(subZones) => setDraft({ ...draft, subZones })}
           issues={drawIssues}
@@ -126,21 +157,14 @@ function Wizard({ admin }: { admin: AdminState }) {
         <PlanStep
           draft={placed}
           target={target}
-          parkings={parkings}
-          locked={Boolean(home)}
           issues={toReview}
-          onTarget={(next) => {
-            // Renaming a new zone keeps the plan. Coordinates mean nothing on another plan: the blocks get placed again.
-            const samePlan = next.kind === "new" && draft.target.kind === "new";
-            setDraft({ ...draft, target: next, subZones: samePlan ? placed.subZones : draft.subZones.map((zone) => ({ ...zone, boundary: [] })) });
-          }}
           onChange={(subZones) => setDraft({ ...draft, subZones })}
           onBack={() => go(2)}
           onNext={() => go(4)}
         />
       )}
       {step === 4 && placed && target && (
-        <ReviewStep draft={placed} target={target} warnings={overlapWarnings(applyCalibration(target, placed, ""), placed)} submitted={submitted} saving={submitted && save === "saving"} failed={submitted && save === "failed"} onBack={() => go(3)} onSave={() => void finish()} />
+        <ReviewStep draft={placed} target={target} warnings={overlapWarnings(applyCalibration(target, placed, ""))} submitted={submitted} saving={submitted && save === "saving"} failed={submitted && save === "failed"} onBack={() => go(3)} onSave={() => void finish()} />
       )}
     </>
   );

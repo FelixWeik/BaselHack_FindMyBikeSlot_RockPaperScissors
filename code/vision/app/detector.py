@@ -1,41 +1,68 @@
-"""Bike detection. Any object with a `detect(jpeg) -> list[Box]` method can be plugged in."""
+"""Bike detection. Any object with a `detect(jpeg) -> list[Detection]` method can be plugged in."""
 
 import io
 import logging
 import threading
+from dataclasses import dataclass
 from typing import Protocol
-
-from .geometry import Box
 
 log = logging.getLogger("uvicorn.error")
 
 
+@dataclass(frozen=True)
+class Detection:
+    """A bike's box, normalized to 0..1 so it doesn't depend on the camera's resolution."""
+
+    bbox: tuple[float, float, float, float]
+    conf: float
+
+
 class Detector(Protocol):
-    def detect(self, jpeg: bytes) -> list[Box]: ...
+    def detect(self, jpeg: bytes) -> list[Detection]: ...
 
 
 class ModelNotReady(RuntimeError):
     """The model is still loading; the frame is accepted but not analysed."""
 
 
+class TooDark(RuntimeError):
+    """The image is too dark to see bikes in: that's not the same as seeing none."""
+
+
+def _unit(value: float) -> float:
+    return min(max(value, 0.0), 1.0)
+
+
+def is_too_dark(image, threshold: float) -> bool:
+    """`image` is a PIL image."""
+    from PIL import ImageStat
+
+    return ImageStat.Stat(image.convert("L")).mean[0] < threshold
+
+
 class YoloDetector:
     """Ultralytics YOLO (.pt or .onnx).
 
-    Loading takes several seconds, longer than the camera's HTTP timeout, so `warmup()` loads the
-    model in the background at startup and `detect()` fails fast until it is ready.
+    Loading takes several seconds, so `warmup()` loads the model in the background at startup and `detect()` fails
+    fast until it is ready.
     """
 
-    def __init__(self, model_path: str, bike_classes: tuple[str, ...], min_confidence: float):
+    def __init__(self, model_path: str, bike_classes: tuple[str, ...], min_confidence: float, imgsz: int, dark: float):
         self.model_path = model_path
         self.bike_classes = {c.strip() for c in bike_classes if c.strip()}
         self.min_confidence = min_confidence
+        self.imgsz = imgsz
+        self.dark = dark
         self._model = None
         self._class_ids: list[int] = []
         self._load_lock = threading.Lock()
-        self._infer_lock = threading.Lock()  # inference is not thread-safe
 
     def warmup(self) -> None:
         threading.Thread(target=self._load, name="model-warmup", daemon=True).start()
+
+    @property
+    def ready(self) -> bool:
+        return self._model is not None
 
     def _load(self) -> None:
         with self._load_lock:
@@ -54,18 +81,19 @@ class YoloDetector:
             log.info("Loaded %s, bike classes: %s", self.model_path, [model.names[i] for i in self._class_ids])
             self._model = model
 
-    def detect(self, jpeg: bytes) -> list[Box]:
+    def detect(self, jpeg: bytes) -> list[Detection]:
         if self._model is None:
             raise ModelNotReady(self.model_path)
         from PIL import Image
 
         image = Image.open(io.BytesIO(jpeg)).convert("RGB")
-        with self._infer_lock:
-            result = self._model.predict(image, classes=self._class_ids, conf=self.min_confidence, verbose=False)[0]
-        names = result.names
+        if is_too_dark(image, self.dark):
+            raise TooDark
+        width, height = image.size
+        result = self._model.predict(
+            image, classes=self._class_ids, conf=self.min_confidence, imgsz=self.imgsz, verbose=False, save=False
+        )[0]
         return [
-            Box(*map(float, xyxy), conf=float(conf), label=names[int(cls)])
-            for xyxy, conf, cls in zip(
-                result.boxes.xyxy.tolist(), result.boxes.conf.tolist(), result.boxes.cls.tolist(), strict=True
-            )
+            Detection((_unit(x0 / width), _unit(y0 / height), _unit(x1 / width), _unit(y1 / height)), float(conf))
+            for (x0, y0, x1, y1), conf in zip(result.boxes.xyxy.tolist(), result.boxes.conf.tolist(), strict=True)
         ]

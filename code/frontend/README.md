@@ -38,21 +38,23 @@ The switch lives in `lib/api.ts`.
 
 ## API contract
 
-The schema comes from `code/types/parkingLotConfig.ts` and `code/types/parkingHeatmap.ts`, mirrored in `lib/types.ts` (keep both in sync). Coordinates are in metres.
+The schema comes from `code/types/parkingLotConfig.ts` and `code/types/parkingOccupancy.ts`, mirrored in `lib/types.ts` (keep both in sync). Plan coordinates are in metres, camera polygons normalized to 0..1. See `documentation/api.md`.
 
-The endpoints are **assumptions** until the backend confirms them (they live in `lib/api.ts` and `lib/mock.ts`):
+- `GET /api/v1/parkings` returns `ParkingLotConfig[]`. Refreshed every 5 minutes.
+- `GET /api/v1/parkings/:id/occupancy` returns `ParkingOccupancy`. Polled every 5 s while the app is visible, with backoff on errors.
+- `POST /api/v1/cameras/:id/calibration-capture` returns the anonymized view for the setup wizard.
 
-- `GET /api/parkings` returns `ParkingLotConfig[]`. Refreshed every 5 minutes.
-- `GET /api/parkings/:id/heatmap` returns `ParkingHeatmap`. Polled every 5 s while the app is visible, with backoff on errors.
+The mock routes answer the same under `/api`.
 
 How the UI reads the data:
 
-- A zone's chance is the mean probability of the grid cells inside its polygon; a parking's is the same, weighted by zone area.
+- A zone's chance is `1 - occupancy`; a parking's is the same, weighted by capacity over the zones with a measurement.
+- A zone without one is shown in grey as "No live data". It is neither free nor full, and it's never recommended.
 - Levels: 60%+ Quiet, 30%+ Busy, below that Nearly full.
 - The recommendation only considers open parkings. Favorites win a near-tie, and the current pick is held through a near-tie so it doesn't flicker.
-- The payload has no timestamp, so "Updated Xs ago" is measured from the last successful fetch on the client.
+- "Updated Xs ago" is measured from the last successful fetch on the client; a stale measurement is already `unknown` on the server.
 
-**Forecast and admin figures are simulated** (`lib/forecast.ts`) until the backend provides history. The UI labels them as such.
+**The forecast is simulated** (`lib/forecast.ts`) until the backend provides history. The UI labels it as such.
 
 ## Code layout
 

@@ -10,9 +10,8 @@ import { LEVEL_LABEL, bestRegion } from "@/lib/geometry";
 import { toggleFavorite, updateSettings } from "@/lib/settings";
 
 export function ParkingCard({ item, favorite }: { item: ParkingItem; favorite: boolean }) {
-  const { config, heatmap, stats, overall, level, openState, trend, history } = item;
-  const pct = Math.round(overall * 100);
-  const open = openState.open;
+  const { config, stats, overall, level, openState, trend, history } = item;
+    const open = openState.open;
   const best = stats ? bestRegion(stats) : null;
   const href = `/map?p=${encodeURIComponent(config.id)}`;
 
@@ -39,10 +38,10 @@ export function ParkingCard({ item, favorite }: { item: ParkingItem; favorite: b
         {stats ? (
           open ? (
             <>
-              <Gauge chance={overall} label={`${config.name} chance of a spot`} className="mt-2" />
+              {overall !== null && <Gauge chance={overall} label={`${config.name} estimated free`} className="mt-2" />}
               <p className="mt-2 flex items-baseline justify-between gap-2">
-                <span className="font-semibold">{LEVEL_LABEL[level]}</span>
-                <span className="font-display text-lg font-bold tabular-nums">{pct}%</span>
+                <span className="font-semibold">{level ? LEVEL_LABEL[level] : "No live data"}</span>
+                {overall !== null && <span className="font-display text-lg font-bold tabular-nums">{Math.round(overall * 100)}%</span>}
               </p>
               <p className="flex flex-wrap items-center gap-x-3 text-sm text-muted">
                 {trend ? <TrendLabel trend={trend} /> : <span>{openState.label}</span>}
@@ -63,14 +62,14 @@ export function ParkingCard({ item, favorite }: { item: ParkingItem; favorite: b
       <div className="flex w-28 shrink-0 flex-col justify-center gap-1.5 self-center sm:w-32">
         <ViewTransition name={`parking-map-${config.id}`}>
           <div className={`aspect-[4/3] overflow-hidden rounded-2xl ring-1 ring-border ${open ? "" : "opacity-50 saturate-50"}`}>
-            {heatmap && stats ? (
-              <RegionMap config={config} heatmap={heatmap} stats={stats} highlightKey={open && stats.length > 1 ? best?.key : null} compact className="size-full" />
+            {stats ? (
+              <RegionMap config={config} stats={stats} highlightKey={open && stats.length > 1 ? best?.key : null} compact className="size-full" />
             ) : (
               <div className="size-full animate-pulse bg-surface-2" />
             )}
           </div>
         </ViewTransition>
-        {open && <Sparkline values={history.map((h) => h.overall)} className="h-5 w-full" />}
+        {open && <Sparkline values={history.flatMap((h) => (h.overall === null ? [] : [h.overall]))} className="h-5 w-full" />}
       </div>
     </Card>
   );

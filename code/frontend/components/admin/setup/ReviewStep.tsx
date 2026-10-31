@@ -58,7 +58,7 @@ export function ReviewStep({ draft, target, warnings, submitted, saving, failed,
           {warnings.map((warning) => (
             <p key={warning}>{warning}</p>
           ))}
-          <p className="text-sm text-muted">Where sub-zones overlap, each spot only counts for the first one.</p>
+          <p className="text-sm text-muted">The plan only draws them; each sub-zone keeps its own occupancy.</p>
         </Card>
       )}
 

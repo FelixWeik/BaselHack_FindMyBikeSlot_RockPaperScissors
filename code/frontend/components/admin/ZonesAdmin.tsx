@@ -129,15 +129,16 @@ export function ZonesAdmin({ admin }: { admin: AdminState }) {
         <ZoneInspector
           key={`inspector-${parking.id}`}
           parking={parking}
+          devices={devices}
           selectedRegionId={region?.id ?? null}
           onSelectRegion={setRegionId}
           onUpdateParking={update}
           onAddZone={addZone}
           onDeleteRegion={(id) => {
-            if (window.confirm("Delete this sub-zone?")) update((current) => removeRegion(current, id));
+            if (window.confirm("Delete this sub-zone? It goes for every camera watching it.")) update((current) => removeRegion(current, id));
           }}
           onUnlinkCamera={(id) => {
-            if (window.confirm("Unlink this camera? Its sub-zones stay on the plan, and it goes back to the cameras to calibrate.")) update((current) => removeCamera(current, id));
+            if (window.confirm("Unlink this camera? The sub-zones stay on the plan, and it goes back to the cameras to calibrate.")) update((current) => removeCamera(current, id));
           }}
           onDeleteParking={() => {
             if (window.confirm(`Delete ${parking.name || "this zone"} and its sub-zones? Its cameras go back to the cameras to calibrate.`)) removeParking(parking.id);

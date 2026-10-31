@@ -1,12 +1,12 @@
 "use client";
 
-import { MOCK_MODE, fetchDebug, fetchHeatmap, fetchParkings } from "./api";
+import { MOCK_MODE, fetchDebug, fetchOccupancy, fetchParkings } from "./api";
 import { analyze, overallChance, type RegionStat } from "./geometry";
 import type { Sample } from "./recommend";
-import type { Clock, ParkingHeatmap, ParkingLotConfig } from "./types";
+import type { Clock, ParkingLotConfig, ParkingOccupancy } from "./types";
 
-const STORAGE_KEY = "fmbs.live.v2";
-const LEGACY_KEYS = ["fmbs.configs", "fmbs.heatmaps", "fmbs.parking"];
+const STORAGE_KEY = "fmbs.live.v3";
+const LEGACY_KEYS = ["fmbs.configs", "fmbs.heatmaps", "fmbs.parking", "fmbs.live.v2"];
 const POLL_MS = 5000;
 const MAX_BACKOFF_MS = 30_000;
 const CONFIG_REFRESH_MS = 5 * 60_000;
@@ -14,9 +14,9 @@ const PERSIST_MS = 30_000;
 const HISTORY_MS = 10 * 60_000;
 
 export interface LiveEntry {
-  heatmap: ParkingHeatmap;
+  occupancy: ParkingOccupancy;
   stats: RegionStat[];
-  overall: number;
+  overall: number | null;
   fetchedAt: number;
   history: Sample[];
 }
@@ -46,9 +46,9 @@ function emit(next: Partial<LiveSnapshot>) {
   listeners.forEach((l) => l());
 }
 
-function buildEntry(config: ParkingLotConfig, heatmap: ParkingHeatmap, fetchedAt: number, history: Sample[]): LiveEntry {
-  const stats = analyze(config, heatmap);
-  return { heatmap, stats, overall: overallChance(stats), fetchedAt, history };
+function buildEntry(config: ParkingLotConfig, occupancy: ParkingOccupancy, fetchedAt: number, history: Sample[]): LiveEntry {
+  const stats = analyze(config, occupancy);
+  return { occupancy, stats, overall: overallChance(stats), fetchedAt, history };
 }
 
 function hydrate() {
@@ -58,13 +58,13 @@ function hydrate() {
     if (!raw) return;
     const saved = JSON.parse(raw) as {
       parkings: ParkingLotConfig[];
-      heat: Record<string, { heatmap: ParkingHeatmap; fetchedAt: number; history: Sample[] }>;
+      live: Record<string, { occupancy: ParkingOccupancy; fetchedAt: number; history: Sample[] }>;
       simulatedClock?: Clock | null;
     };
     const entries: Record<string, LiveEntry> = {};
     for (const config of saved.parkings) {
-      const h = saved.heat[config.id];
-      if (h) entries[config.id] = buildEntry(config, h.heatmap, h.fetchedAt, h.history ?? []);
+      const l = saved.live[config.id];
+      if (l) entries[config.id] = buildEntry(config, l.occupancy, l.fetchedAt, l.history ?? []);
     }
     snapshot = { ...snapshot, parkings: saved.parkings, entries, simulatedClock: saved.simulatedClock ?? null };
   } catch {
@@ -74,13 +74,13 @@ function hydrate() {
 
 function persist() {
   try {
-    const heat = Object.fromEntries(
+    const live = Object.fromEntries(
       Object.entries(snapshot.entries).map(([id, e]) => [
         id,
-        { heatmap: e.heatmap, fetchedAt: e.fetchedAt, history: e.history },
+        { occupancy: e.occupancy, fetchedAt: e.fetchedAt, history: e.history },
       ]),
     );
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ parkings: snapshot.parkings, heat, simulatedClock: snapshot.simulatedClock }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ parkings: snapshot.parkings, live, simulatedClock: snapshot.simulatedClock }));
     persistedAt = Date.now();
   } catch {
     // quota exceeded or storage disabled
@@ -117,14 +117,14 @@ async function load() {
     await Promise.allSettled(
       parkings.map(async (config) => {
         try {
-          const heatmap = await fetchHeatmap(config.id);
+          const occupancy = await fetchOccupancy(config.id);
           const fetchedAt = Date.now();
           const previous = entries[config.id]?.history ?? [];
-          const entry = buildEntry(config, heatmap, fetchedAt, []);
+          const entry = buildEntry(config, occupancy, fetchedAt, []);
           const sample: Sample = {
             t: fetchedAt,
             overall: entry.overall,
-            zones: Object.fromEntries(entry.stats.map((s) => [s.key, s.chance])),
+            zones: Object.fromEntries(entry.stats.flatMap((s) => (s.chance === null ? [] : [[s.key, s.chance]]))),
           };
           entry.history = [...previous.filter((s) => fetchedAt - s.t < HISTORY_MS), sample];
           entries[config.id] = entry;
@@ -140,7 +140,7 @@ async function load() {
     try {
       simulatedClock = (await fetchDebug()).clock;
     } catch {
-      // keep the previous value; the heatmap calls already report connectivity
+      // keep the previous value; the occupancy calls already report connectivity
     }
   }
 

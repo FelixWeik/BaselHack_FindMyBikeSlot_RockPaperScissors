@@ -4,20 +4,10 @@ import type { ParkingLotConfig, ParkingRegion, ParkingSchedule, Point } from "./
 /** Admin vocabulary: a parking is a "zone", its regions are the "sub-zones". */
 export const GRID = 0.5;
 
-/** A region whose id is always set, so it can be used as a stable key and selection handle. */
-export type AdminRegion = ParkingRegion & { id: string };
-export type AdminParking = Omit<ParkingLotConfig, "geometry"> & { geometry: { regions: AdminRegion[] } };
+export type AdminRegion = ParkingRegion;
+export type AdminParking = ParkingLotConfig;
 
 export const snapGrid = (value: number) => Math.round(value / GRID) * GRID;
-
-/** Fills in missing region ids; returns the same object when nothing needs fixing. */
-export function withIds(parking: ParkingLotConfig): AdminParking {
-  if (parking.geometry.regions.every((region) => region.id)) return parking as AdminParking;
-  return {
-    ...parking,
-    geometry: { regions: parking.geometry.regions.map((region, index) => ({ ...region, id: region.id ?? String(index + 1) })) },
-  };
-}
 
 export const uniqueId = (taken: Set<string>, prefix: string) => {
   let n = taken.size + 1;
@@ -39,7 +29,7 @@ export const planBox = (parking: AdminParking) => boxOf(parking.geometry.regions
 /** A parking's capacity is what its sub-zones add up to. */
 export const withRegions = (parking: AdminParking, regions: AdminRegion[]): AdminParking => ({
   ...parking,
-  totalSlots: regions.reduce((sum, region) => sum + (region.slotCount ?? 0), 0),
+  totalSlots: regions.reduce((sum, region) => sum + region.slotCount, 0),
   geometry: { regions },
 });
 
@@ -60,8 +50,7 @@ export function newRegion(parking: AdminParking): AdminRegion {
   return {
     id: nextRegionId(new Set(parking.geometry.regions.map((region) => region.id))),
     name: `Sub-zone ${parking.geometry.regions.length + 1}`,
-    slotCount: 0,
-    cameraIds: [],
+    slotCount: 1,
     boundary: rectangle(snapGrid(cx - w / 2), snapGrid(cy - h / 2), snapGrid(w), snapGrid(h)),
   };
 }
@@ -74,13 +63,16 @@ export const replaceRegion = (parking: AdminParking, next: AdminRegion) =>
 export const moveRegion = (parking: AdminParking, id: string, boundary: Point[]) =>
   withRegions(parking, parking.geometry.regions.map((region) => (region.id === id ? { ...region, boundary } : region)));
 
-export const removeRegion = (parking: AdminParking, id: string) => withRegions(parking, parking.geometry.regions.filter((region) => region.id !== id));
+/** The zone goes for every camera: none keeps a polygon pointing at it. */
+export const removeRegion = (parking: AdminParking, id: string): AdminParking => ({
+  ...withRegions(parking, parking.geometry.regions.filter((region) => region.id !== id)),
+  cameras: parking.cameras.map((camera) => (camera.views ? { ...camera, views: camera.views.filter((view) => view.regionId !== id) } : camera)),
+});
 
-/** Unlinks a camera: it goes back to the cameras to calibrate, its sub-zones stay on the plan. */
+/** Unlinks a camera: it goes back to the cameras to calibrate, the physical zones stay on the plan. */
 export const removeCamera = (parking: AdminParking, id: string): AdminParking => ({
   ...parking,
   cameras: parking.cameras.filter((camera) => camera.id !== id),
-  geometry: { regions: parking.geometry.regions.map((region) => ({ ...region, cameraIds: region.cameraIds?.filter((c) => c !== id) })) },
 });
 
 const DAYTIME = [{ start: "06:00", end: "20:00" }];

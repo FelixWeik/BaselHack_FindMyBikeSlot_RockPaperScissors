@@ -8,7 +8,7 @@ import { NumberField } from "./NumberField";
 // The form edits its own draft: nothing reaches the document until Save, so Cancel really cancels.
 function ZoneForm({ region, onSave, onClose }: { region: AdminRegion; onSave: (region: AdminRegion) => void; onClose: () => void }) {
   const [name, setName] = useState(region.name ?? "");
-  const [slotCount, setSlotCount] = useState(region.slotCount ?? 0);
+  const [slotCount, setSlotCount] = useState(region.slotCount);
 
   return (
     <form
@@ -22,7 +22,7 @@ function ZoneForm({ region, onSave, onClose }: { region: AdminRegion; onSave: (r
         <span className="text-muted">Name</span>
         <input className="min-h-11 w-full min-w-0 rounded-2xl bg-surface-2 px-3" value={name} onChange={(e) => setName(e.target.value)} />
       </label>
-      <NumberField label="Capacity" min={0} integer value={slotCount} onCommit={setSlotCount} />
+      <NumberField label="Capacity, shared by every camera watching it" min={1} integer value={slotCount} onCommit={setSlotCount} />
       <div className="flex gap-2">
         <button type="button" className="tap min-h-12 flex-1 rounded-full bg-surface-2 font-semibold" onClick={onClose}>
           Cancel

@@ -12,13 +12,13 @@ export function CameraStep({ parkings, devices, onPick }: { parkings: AdminParki
   return (
     <Card className="grid gap-3 p-4">
       <SectionTitle>Which camera watches this zone?</SectionTitle>
-      {free.length === 0 && <p className="text-muted">Every camera is already calibrated. A new camera shows up here after its first observation reaches the backend.</p>}
+      {free.length === 0 && <p className="text-muted">Every camera is already calibrated. A new camera shows up here after it sends its first frame.</p>}
       <div className="grid gap-2">
         {free.map((device) => (
           <button key={device.id} type="button" onClick={() => onPick({ id: device.id, name: device.name })} className="tap flex min-h-14 items-center justify-between gap-3 rounded-2xl bg-surface-2 px-4 text-left">
             <span className="min-w-0">
               <span className="block truncate font-medium">{device.name}</span>
-              <span className="block truncate text-xs text-muted">{device.id}</span>
+              <span className="block truncate text-xs text-muted">{device.id} · {device.online ? "Online" : "Offline"}</span>
             </span>
             <ChevronRightIcon size={20} />
           </button>

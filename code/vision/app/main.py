@@ -1,37 +1,35 @@
 """Find my Bike Slot - vision service.
 
-Receives JPEG frames from camera nodes, detects bikes, maps them to the slots configured per camera
-and reports debounced slot states to the backend. Frames are kept in memory only (latest per camera,
-for the calibration page) unless RECORD_DIR is set for training data capture.
+Receives JPEG frames from camera nodes, detects bikes and reports their boxes to the backend, which knows the zones.
+Frames live in memory only until they are analysed, unless RECORD_DIR is set for training data capture. The only
+image that ever leaves this service is a calibration capture, and only with its faces masked.
 
 Run (from code/vision):  uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8001
-Calibration page:        http://localhost:8001/
 """
 
+import asyncio
+import contextlib
 import logging
-import threading
-import time
-from collections.abc import Callable
-from datetime import UTC, datetime
-from pathlib import Path
+import re
+from collections.abc import AsyncIterator
+from concurrent.futures import Future
+from contextlib import asynccontextmanager
+from threading import Lock
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
+from .anonymizer import Anonymizer, DefaceAnonymizer
 from .config import Settings
-from .debounce import Debouncer
-from .detector import Detector, ModelNotReady, YoloDetector
-from .geometry import Box
+from .detector import Detector, YoloDetector
 from .recorder import Recorder
-from .slots import DEVICE_ID_RE, CameraSlots, SlotResult, SlotStore, evaluate
+from .worker import FrameWorker, Pending, SendObservation
 
 log = logging.getLogger("uvicorn.error")
 MAX_FRAME_BYTES = 2 * 1024 * 1024
-PAGE = (Path(__file__).parent / "calibrate.html").read_text()
-
-SendObservation = Callable[[dict], None]
+DEVICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def http_sender(backend_url: str) -> SendObservation:
@@ -47,42 +45,51 @@ def http_sender(backend_url: str) -> SendObservation:
     return send
 
 
+def _number(value: str | None) -> int | None:
+    with contextlib.suppress(TypeError, ValueError):
+        return int(value)
+    return None
+
+
 def create_app(
     settings: Settings | None = None,
     detector: Detector | None = None,
     send_observation: SendObservation | None = None,
+    anonymizer: Anonymizer | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
-    detector = detector or YoloDetector(settings.model_path, settings.bike_classes, settings.min_confidence)
-    send_observation = send_observation or http_sender(settings.backend_url)
-    slot_store = SlotStore(settings.slots_dir)
-    debouncer = Debouncer(settings.debounce_frames)
+    detector = detector or YoloDetector(
+        settings.model_path, settings.bike_classes, settings.min_confidence, settings.imgsz, settings.dark_below
+    )
+    worker = FrameWorker(detector, send_observation or http_sender(settings.backend_url))
+    anonymizer = anonymizer or DefaceAnonymizer()
     recorder = Recorder(settings.record_dir, settings.record_every_s)
 
-    latest: dict[str, dict] = {}  # device_id -> latest frame + results, in memory only
-    lock = threading.Lock()
+    # Calibration captures waiting for a camera's next frame. Nothing keeps a frame around for them.
+    waiting: dict[str, list[Future[bytes]]] = {}
+    waiting_lock = Lock()
 
-    app = FastAPI(title="Find my Bike Slot - Vision", version="0.1.0")
-    if recorder.enabled:
-        log.warning("Recording training frames to %s", settings.record_dir)
-    if hasattr(detector, "warmup"):
-        detector.warmup()
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        if recorder.enabled:
+            log.warning("Recording training frames to %s", settings.record_dir)
+        if hasattr(detector, "warmup"):
+            detector.warmup()
+        worker.start()
+        yield
+        worker.stop()
 
-    def process(device_id: str, jpeg: bytes) -> tuple[list[Box], list[SlotResult]]:
-        boxes = detector.detect(jpeg)
-        config = slot_store.get(device_id)
-        if config is None or not config.slots:
-            return boxes, []
-        raw = evaluate(boxes, config.slots, settings.occupied_overlap)
-        return boxes, debouncer.update(device_id, raw)
+    app = FastAPI(title="Find my Bike Slot - Vision", version="0.2.0", lifespan=lifespan)
+    app.state.worker = worker
+    app.state.waiting = waiting
 
     @app.get("/healthz")
     def healthz() -> dict:
-        return {"status": "ok", "recording": recorder.enabled}
+        return {"status": "ok", "recording": recorder.enabled, "model_ready": getattr(detector, "ready", True)}
 
     @app.post("/api/v1/frames")
-    async def post_frame(request: Request, background: BackgroundTasks) -> dict:
-        """Frame from a camera node (see documentation/api.md, interface 1)."""
+    async def post_frame(request: Request) -> dict:
+        """Frame from a camera node (see documentation/api.md, interface 1). Answers before the frame is analysed."""
         device_id = request.headers.get("x-device-id", "")
         if not DEVICE_ID_RE.match(device_id):
             raise HTTPException(400, "missing or invalid X-Device-Id")
@@ -93,91 +100,38 @@ def create_app(
             raise HTTPException(400, "body is not a complete JPEG")
 
         recorder.maybe_save(device_id, jpeg)
-        try:
-            boxes, slots = await run_in_threadpool(process, device_id, jpeg)
-        except ModelNotReady:
-            boxes, slots = [], []  # nothing to report yet; the backend keeps the previous state
-        except Exception:
-            # Keep accepting frames even if the model fails; report slots as unknown.
-            log.exception("Detection failed for %s", device_id)
-            config = slot_store.get(device_id)
-            boxes = []
-            slots = [SlotResult(slot_id=s.slot_id, state="unknown", conf=0.0) for s in (config.slots if config else [])]
+        with waiting_lock:
+            for future in waiting.pop(device_id, ()):
+                future.set_result(jpeg)
+        worker.submit(
+            device_id, Pending(jpeg, _number(request.headers.get("x-rssi")), _number(request.headers.get("x-uptime-s")))
+        )
+        return {"ok": True}
 
-        with lock:
-            latest[device_id] = {
-                "jpeg": jpeg,
-                "t": time.time(),
-                "rssi": request.headers.get("x-rssi"),
-                "uptime_s": request.headers.get("x-uptime-s"),
-                "boxes": boxes,
-                "slots": slots,
-            }
-        if slots:
-            background.add_task(
-                send_observation,
-                {
-                    "device_id": device_id,
-                    "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    "slots": [s.model_dump() for s in slots],
-                },
-            )
-        return {"ok": True, "bikes": len(boxes), "slots": len(slots)}
-
-    def _entry(device_id: str) -> dict:
-        with lock:
-            entry = latest.get(device_id)
-        if entry is None:
-            raise HTTPException(404, "no frame received from this device yet")
-        return entry
-
-    @app.get("/api/v1/devices")
-    def devices() -> list[dict]:
-        now = time.time()
-        with lock:
-            items = sorted(latest.items())
-        return [
-            {
-                "device_id": d,
-                "age_s": round(now - e["t"], 1),
-                "rssi": e["rssi"],
-                "uptime_s": e["uptime_s"],
-                "bikes": len(e["boxes"]),
-                "slots": [s.model_dump() for s in e["slots"]],
-            }
-            for d, e in items
-        ]
-
-    @app.get("/api/v1/devices/{device_id}/frame.jpg")
-    def frame(device_id: str) -> Response:
-        return Response(_entry(device_id)["jpeg"], media_type="image/jpeg", headers={"Cache-Control": "no-store"})
-
-    @app.get("/api/v1/devices/{device_id}/detections")
-    def detections(device_id: str) -> dict:
-        entry = _entry(device_id)
-        return {
-            "boxes": [b.__dict__ for b in entry["boxes"]],
-            "slots": [s.model_dump() for s in entry["slots"]],
-        }
-
-    @app.get("/api/v1/devices/{device_id}/slots")
-    def get_slots(device_id: str) -> CameraSlots:
+    @app.post("/api/v1/devices/{device_id}/calibration-capture")
+    async def calibration_capture(device_id: str) -> Response:
+        """A fresh frame of the camera with its faces masked. No masked image, no answer: the raw frame never leaves."""
         if not DEVICE_ID_RE.match(device_id):
             raise HTTPException(400, "invalid device id")
-        return slot_store.get(device_id) or CameraSlots(device_id=device_id)
-
-    @app.put("/api/v1/devices/{device_id}/slots")
-    def put_slots(device_id: str, config: CameraSlots) -> CameraSlots:
-        if config.device_id != device_id:
-            raise HTTPException(400, "device_id in body does not match the URL")
-        if len({s.slot_id for s in config.slots}) != len(config.slots):
-            raise HTTPException(400, "slot_id values must be unique")
-        slot_store.put(config)
-        log.info("Saved %d slots for %s", len(config.slots), device_id)
-        return config
-
-    @app.get("/", response_class=HTMLResponse)
-    def calibration_page() -> str:
-        return PAGE
+        future: Future[bytes] = Future()
+        with waiting_lock:
+            waiting.setdefault(device_id, []).append(future)
+        try:
+            jpeg = await asyncio.wait_for(asyncio.wrap_future(future), settings.capture_timeout_s)
+        except TimeoutError:
+            with waiting_lock:
+                if future in waiting.get(device_id, ()):
+                    waiting[device_id].remove(future)
+                if not waiting.get(device_id):
+                    waiting.pop(device_id, None)
+            raise HTTPException(504, "No frame arrived from this camera") from None
+        try:
+            masked = await run_in_threadpool(anonymizer.anonymize, jpeg)
+        except Exception as err:
+            log.error("Anonymization failed for %s: %s", device_id, type(err).__name__)
+            raise HTTPException(503, "The capture could not be anonymized, so it was not sent") from None
+        finally:
+            del jpeg
+        return Response(masked, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     return app

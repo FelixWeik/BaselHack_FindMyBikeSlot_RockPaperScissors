@@ -5,15 +5,17 @@ import { Card, SectionTitle } from "@/components/ui/primitives";
 export const metadata = { title: "Privacy" };
 
 const STEPS = [
-  { title: "Camera", text: "Takes a low-resolution photo of the parking every few seconds." },
-  { title: "Vision computer", text: "Receives the photos over the local network and works out which areas are free." },
-  { title: "Probability map", text: "Only numbers come out: for each square of the parking, the chance of a free spot." },
-  { title: "This app", text: "Shows you that map. It never receives a photo." },
+  { title: "Camera", text: "Takes a photo of the parking every second and sends it over the local network. It stores nothing." },
+  { title: "Vision computer", text: "Looks for bikes in the photo, in memory, then forgets it. No photo is written to disk." },
+  { title: "Backend", text: "Only receives the position of each bike in the image, and works out how full each zone is. It keeps no history of them." },
+  { title: "This app", text: "Shows you how full each zone is estimated to be. It never receives a photo." },
 ];
 
 const PROMISES = [
-  "The app never shows you a camera image, and its servers never receive one.",
-  "Only an admin calibrating a camera sees a view of the parking. A photo they pick stays in their browser and is not uploaded.",
+  "The app never shows you a camera image, and no photo is kept anywhere.",
+  "Nobody is recognized or followed: the system only looks for bikes.",
+  "An admin calibrating a camera gets one fresh view of the parking. Faces are masked first, and if that fails the view isn't sent at all. It only lives in their browser tab until they're done.",
+  "Face masking is automatic and can miss a face, for example one that is small or turned away. It reduces the risk, it doesn't remove it.",
   "No account: the app doesn't know who you are.",
   "No analytics or tracking in the app. Your favorites and settings stay on your device.",
 ];

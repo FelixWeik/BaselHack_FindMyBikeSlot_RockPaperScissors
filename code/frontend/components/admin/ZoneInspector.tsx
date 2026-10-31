@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PencilIcon, PlusIcon, TrashIcon } from "@/components/ui/Icons";
 import { Card, SectionTitle } from "@/components/ui/primitives";
 import type { AdminParking } from "@/lib/adminModel";
+import type { Device } from "@/lib/types";
 import { NumberField } from "./NumberField";
 import { ScheduleEditor } from "./ScheduleEditor";
 
@@ -13,6 +14,7 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, 
 
 interface Props {
   parking: AdminParking;
+  devices: Device[];
   selectedRegionId: string | null;
   onSelectRegion: (id: string) => void;
   onUpdateParking: (mutate: (parking: AdminParking) => AdminParking) => void;
@@ -23,7 +25,7 @@ interface Props {
   onOpenZoneInfo: (id: string) => void;
 }
 
-export function ZoneInspector({ parking, selectedRegionId, onSelectRegion, onUpdateParking, onAddZone, onDeleteRegion, onUnlinkCamera, onDeleteParking, onOpenZoneInfo }: Props) {
+export function ZoneInspector({ parking, devices, selectedRegionId, onSelectRegion, onUpdateParking, onAddZone, onDeleteRegion, onUnlinkCamera, onDeleteParking, onOpenZoneInfo }: Props) {
   return (
     <div className="flex min-h-0 min-w-0 flex-col gap-4 lg:overflow-y-auto lg:overflow-x-hidden lg:pr-1">
       <Card className="grid gap-4 p-4">
@@ -57,7 +59,7 @@ export function ZoneInspector({ parking, selectedRegionId, onSelectRegion, onUpd
               <div key={region.id} className={`flex items-center gap-2 rounded-2xl p-2 ${active ? "bg-primary/15 ring-2 ring-primary" : "bg-surface-2"}`}>
                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onSelectRegion(region.id)}>
                   <div className="truncate font-medium">{label}</div>
-                  <div className="text-xs text-muted">{region.slotCount ?? 0} slots</div>
+                  <div className="text-xs text-muted">{region.slotCount} slots</div>
                 </button>
                 <button type="button" aria-label={`Edit ${label}`} onClick={() => onOpenZoneInfo(region.id)} className={iconButton}>
                   <PencilIcon size={18} />
@@ -75,11 +77,18 @@ export function ZoneInspector({ parking, selectedRegionId, onSelectRegion, onUpd
         <SectionTitle>Cameras</SectionTitle>
         {parking.cameras.length === 0 && <p className="text-sm text-muted">No camera watches this zone yet.</p>}
         <div className="grid gap-2">
-          {parking.cameras.map((camera) => (
+          {parking.cameras.map((camera) => {
+            const online = devices.find((device) => device.id === camera.id)?.online ?? false;
+            return (
             <div key={camera.id} className="flex min-w-0 items-center gap-2 rounded-2xl bg-surface-2 p-2">
               <div className="min-w-0 flex-1 pl-1">
-                <div className="truncate font-medium">{camera.name}</div>
-                <div className="text-xs text-muted">{camera.calibratedAt ? `Calibrated ${formatDate(camera.calibratedAt)}` : "Not calibrated"}</div>
+                <div className="flex items-center gap-1.5">
+                  <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ background: online ? "var(--chance-good)" : "var(--chance-unknown)" }} />
+                  <span className="truncate font-medium">{camera.name}</span>
+                </div>
+                <div className="text-xs text-muted">
+                  {online ? "Online" : "Offline"} · {camera.calibratedAt ? `Calibrated ${formatDate(camera.calibratedAt)}` : "Not calibrated"}
+                </div>
               </div>
               <Link href={`/admin/setup?camera=${encodeURIComponent(camera.id)}&step=2`} className="tap inline-flex min-h-10 shrink-0 items-center rounded-full bg-surface px-3 text-sm font-semibold">
                 {camera.calibratedAt ? "Recalibrate" : "Calibrate"}
@@ -88,7 +97,8 @@ export function ZoneInspector({ parking, selectedRegionId, onSelectRegion, onUpd
                 <TrashIcon size={18} />
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
 

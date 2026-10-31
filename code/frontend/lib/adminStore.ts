@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { type AdminParking, withIds } from "./adminModel";
+import type { AdminParking } from "./adminModel";
 import { deleteParking, fetchDevices, fetchParkings, saveParking } from "./api";
 import { reloadConfigs } from "./store";
 import type { Device } from "./types";
@@ -39,7 +39,7 @@ export async function loadAdmin() {
     const [parkings, devices] = await Promise.all([fetchParkings(), fetchDevices()]);
     // Unsaved edits win over what the server had before them.
     if (pending.size > 0 || flushing) emit({ status: "ready", devices });
-    else emit({ status: "ready", parkings: parkings.map(withIds), devices });
+    else emit({ status: "ready", parkings, devices });
   } catch {
     if (state.status !== "ready") emit({ status: "error" });
   }
@@ -100,9 +100,21 @@ export function removeParking(id: string) {
   queue(id, null);
 }
 
+const DEVICES_POLL_MS = 10_000;
+
+async function refreshDevices() {
+  try {
+    emit({ devices: await fetchDevices() });
+  } catch {
+    // keep the last list; the next round retries
+  }
+}
+
 export function useAdmin(): AdminState {
   useEffect(() => {
     void loadAdmin();
+    const timer = setInterval(() => void refreshDevices(), DEVICES_POLL_MS);
+    return () => clearInterval(timer);
   }, []);
   return useSyncExternalStore(subscribe, () => state, () => INITIAL);
 }
