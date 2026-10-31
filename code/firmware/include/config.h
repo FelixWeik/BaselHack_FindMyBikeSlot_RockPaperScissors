@@ -6,7 +6,7 @@
 
 // Vision service. Resolved via mDNS (<VISION_HOSTNAME>.local) first, then VISION_FALLBACK_IP.
 #define VISION_HOSTNAME "tempestD"  // without ".local"
-#define VISION_FALLBACK_IP "10.165.73.246"  // only used if mDNS fails; laptop IP on the demo hotspot
+#define VISION_FALLBACK_IP "192.168.22.2"  // only used if mDNS fails; laptop IP on memox.world
 #define VISION_PORT 8001
 #define VISION_PATH "/api/v1/frames"
 

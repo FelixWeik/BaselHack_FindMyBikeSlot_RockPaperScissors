@@ -8,6 +8,7 @@
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <esp_camera.h>
 #include <esp_task_wdt.h>
 
@@ -20,11 +21,20 @@ const int LED_PIN = 21;  // user LED, active low
 IPAddress visionIp;               // resolved after WiFi is up
 int failures = 0;                 // consecutive capture/upload failures
 unsigned long wifiLostSince = 0;  // 0 while connected
+WiFiMulti wifiMulti;
+
+struct WifiNetwork {
+  const char *ssid;
+  const char *password;
+};
+#ifndef WIFI_NETWORKS  // older secrets.h with a single network
+#define WIFI_NETWORKS {{WIFI_SSID, WIFI_PASSWORD}}
+#endif
+const WifiNetwork WIFI_LIST[] = WIFI_NETWORKS;
 
 // ---------- Status LED ----------
 // short flash  = frame delivered
-// fast blink   = connecting to WiFi
-// steady on    = last attempt failed
+// steady on    = connecting to WiFi, or the last upload failed
 
 void ledOn() { digitalWrite(LED_PIN, LOW); }
 void ledOff() { digitalWrite(LED_PIN, HIGH); }
@@ -144,27 +154,31 @@ const char *wifiStatusText(wl_status_t s) {
   }
 }
 
+// Scans and joins the strongest known network, so the same firmware works in the office WiFi and
+// on a phone hotspot without reflashing.
 bool wifiConnect() {
-  Serial.printf("Connecting to '%s' ...\n", WIFI_SSID);
+  static bool listAdded = false;
+  if (!listAdded) {
+    for (const WifiNetwork &n : WIFI_LIST) wifiMulti.addAP(n.ssid, n.password);
+    listAdded = true;
+  }
+  Serial.printf("Connecting to the strongest of %u known networks ...\n", sizeof(WIFI_LIST) / sizeof(WIFI_LIST[0]));
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);  // modem sleep adds latency and causes dropped uploads
   WiFi.setAutoReconnect(true);
-  WiFi.disconnect();     // clear any half-open previous session
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
-    watchdogFeed();
-    (millis() / 250) % 2 ? ledOn() : ledOff();
-    delay(50);
+  ledOn();
+  while (wifiMulti.run(5000) != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
+    watchdogFeed();  // each run() scans and blocks for up to 5 s
   }
   ledOff();
   if (WiFi.status() != WL_CONNECTED) {
     Serial.printf("WiFi failed: %s\n", wifiStatusText(WiFi.status()));
     return false;
   }
-  Serial.printf("WiFi connected: IP %s, gateway %s, RSSI %d dBm\n", WiFi.localIP().toString().c_str(),
-                WiFi.gatewayIP().toString().c_str(), WiFi.RSSI());
+  Serial.printf("WiFi connected to '%s': IP %s, gateway %s, RSSI %d dBm\n", WiFi.SSID().c_str(),
+                WiFi.localIP().toString().c_str(), WiFi.gatewayIP().toString().c_str(), WiFi.RSSI());
   return true;
 }
 
