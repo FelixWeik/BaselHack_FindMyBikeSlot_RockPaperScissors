@@ -1,7 +1,7 @@
 import { occupancy } from "./forecast";
 import { boxOf, pointInPolygon, regionKey } from "./geometry";
 import { clockInZone } from "./schedule";
-import type { Clock, DebugState, ForcedState, OpeningWindow, ParkingHeatmap, ParkingLotConfig, ParkingRegion, Weekday } from "./types";
+import type { Clock, DebugState, ForcedState, OpeningWindow, ParkingCamera, ParkingHeatmap, ParkingLotConfig, ParkingRegion, Weekday } from "./types";
 
 const CELL = 0.5;
 const TIMEZONE = "Europe/Zurich";
@@ -41,6 +41,7 @@ function config(
   totalSlots: number,
   sched: ParkingLotConfig["schedule"],
   regions: ParkingRegion[],
+  cameras: ParkingCamera[] = [],
 ): ParkingLotConfig {
   return {
     version: 1,
@@ -50,16 +51,27 @@ function config(
     geometry: { regions },
     slotSize: { widthMeters: 0.7, lengthMeters: 2 },
     schedule: sched,
+    cameras,
   };
 }
 
 const PARKINGS: MockParking[] = [
   {
-    config: config("p1", "Parking 1", 60, schedule(ALL_DAYS, { start: "06:30", end: "20:00" }), [
-      { id: "A", boundary: poly([2, 2], [18, 2], [18, 12], [12, 12], [12, 22], [2, 22]) },
-      { id: "B", boundary: poly([20, 2], [40, 2], [40, 10], [34, 22], [20, 22]) },
-      { id: "C", boundary: poly([43, 2], [56, 2], [56, 22], [40, 22]) },
-    ]),
+    config: config(
+      "p1",
+      "Parking 1",
+      60,
+      schedule(ALL_DAYS, { start: "06:30", end: "20:00" }),
+      [
+        { id: "A", name: "North row", slotCount: 18, boundary: poly([2, 2], [18, 2], [18, 12], [12, 12], [12, 22], [2, 22]) },
+        { id: "B", name: "Center row", slotCount: 24, cameraIds: ["cam-p1-1"], boundary: poly([20, 2], [40, 2], [40, 10], [34, 22], [20, 22]) },
+        { id: "C", name: "East wing", slotCount: 18, cameraIds: ["cam-p1-2"], boundary: poly([43, 2], [56, 2], [56, 22], [40, 22]) },
+      ],
+      [
+        { id: "cam-p1-1", name: "Gate cam", position: { x: 18, y: 24 }, headingDeg: 330, rangeMeters: 20 },
+        { id: "cam-p1-2", name: "Corner cam", position: { x: 53, y: 25 }, headingDeg: 245, rangeMeters: 18 },
+      ],
+    ),
     width: 58,
     height: 24,
     blobs: [
@@ -70,10 +82,17 @@ const PARKINGS: MockParking[] = [
     ],
   },
   {
-    config: config("p2", "Parking underground", 44, schedule(WEEKDAYS, { start: "06:00", end: "21:00" }), [
-      { id: "D", boundary: poly([2, 2], [24, 2], [24, 10], [14, 10], [14, 16], [2, 16]) },
-      { id: "E", boundary: poly([26, 2], [46, 2], [46, 16], [26, 16]) },
-    ]),
+    config: config(
+      "p2",
+      "Parking underground",
+      44,
+      schedule(WEEKDAYS, { start: "06:00", end: "21:00" }),
+      [
+        { id: "D", name: "Ramp side", slotCount: 20, cameraIds: ["cam-p2-1"], boundary: poly([2, 2], [24, 2], [24, 10], [14, 10], [14, 16], [2, 16]) },
+        { id: "E", name: "Back wall", slotCount: 24, boundary: poly([26, 2], [46, 2], [46, 16], [26, 16]) },
+      ],
+      [{ id: "cam-p2-1", name: "Ramp cam", position: { x: 18, y: 20 }, headingDeg: 275, rangeMeters: 20 }],
+    ),
     width: 48,
     height: 18,
     blobs: [
@@ -83,9 +102,14 @@ const PARKINGS: MockParking[] = [
     ],
   },
   {
-    config: config("p3", "Pizza", 18, schedule(WEEKDAYS, { start: "07:00", end: "18:30" }), [
-      { id: "F", boundary: poly([2, 2], [22, 2], [22, 14], [8, 14], [2, 8]) },
-    ]),
+    config: config(
+      "p3",
+      "Pizza",
+      18,
+      schedule(WEEKDAYS, { start: "07:00", end: "18:30" }),
+      [{ id: "F", name: "Front strip", slotCount: 18, cameraIds: ["cam-p3-1"], boundary: poly([2, 2], [22, 2], [22, 14], [8, 14], [2, 8]) }],
+      [{ id: "cam-p3-1", name: "Street cam", position: { x: 12, y: 18 }, headingDeg: 300, rangeMeters: 16 }],
+    ),
     width: 24,
     height: 16,
     blobs: [

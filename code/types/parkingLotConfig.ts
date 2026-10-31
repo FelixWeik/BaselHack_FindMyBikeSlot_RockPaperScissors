@@ -1,5 +1,13 @@
 import type { ParkingHeatmap, ParkingRegion } from './parkingHeatmap';
 
+export interface ParkingCamera {
+  id: string;
+  name: string;
+  position: { x: number; y: number };
+  headingDeg: number;
+  rangeMeters: number;
+}
+
 export interface ParkingLotGeometry {
   regions: ParkingRegion[];
 }
@@ -29,9 +37,15 @@ export interface ParkingLotConfig {
   geometry: ParkingLotGeometry;
   slotSize: SlotSize;
   schedule: ParkingSchedule;
+  cameras: ParkingCamera[];
 }
 
 export interface ParkingLotDataset {
   config: ParkingLotConfig;
   heatmap: ParkingHeatmap;
+}
+
+export interface ParkingAdminDocument {
+  version: 1;
+  parkings: ParkingLotConfig[];
 }

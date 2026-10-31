@@ -6,6 +6,12 @@ export interface Point {
 export interface ParkingRegion {
   /** Optional region id for labels, sensors, or UI mapping. */
   id?: string;
+  /** Human name shown in admin and overlays. */
+  name?: string;
+  /** Optional sensor/camera links owned by this region. */
+  cameraIds?: string[];
+  /** Optional capacity override for the region. */
+  slotCount?: number;
   /** Ordered polygon path for one usable parking area. */
   boundary: Point[];
 }

@@ -8,6 +8,9 @@ export interface Point {
 
 export interface ParkingRegion {
   id?: string;
+  name?: string;
+  cameraIds?: string[];
+  slotCount?: number;
   /** Ordered polygon path for one usable parking area. */
   boundary: Point[];
 }
@@ -30,6 +33,14 @@ export interface ParkingHeatmap {
 
 export interface ParkingLotGeometry {
   regions: ParkingRegion[];
+}
+
+export interface ParkingCamera {
+  id: string;
+  name: string;
+  position: Point;
+  headingDeg: number;
+  rangeMeters: number;
 }
 
 export interface SlotSize {
@@ -57,6 +68,12 @@ export interface ParkingLotConfig {
   geometry: ParkingLotGeometry;
   slotSize: SlotSize;
   schedule: ParkingSchedule;
+  cameras: ParkingCamera[];
+}
+
+export interface ParkingAdminDocument {
+  version: 1;
+  parkings: ParkingLotConfig[];
 }
 
 /** A moment in the week; `day` 0 is Monday, `hour` is fractional. */
