@@ -28,13 +28,22 @@ each component be developed and tested on its own against the contract in [`api.
 - **OTA updates:** password-protected (`espota`). Failed authentication is logged but never triggers
   a restart, so the network cannot be used to reboot cameras.
 
-### Vision service
+### Vision service (`code/vision`)
 
-- Receives frames on `POST /api/v1/frames`, detects bikes and maps detections to the slot polygons
-  configured for each `X-Device-Id`.
-- Frames stay in memory and are discarded after processing.
-- Sends per-slot states with a confidence value to the backend. `unknown` is a first-class state
-  (occlusion, darkness) so the backend never has to guess.
+- Receives frames on `POST /api/v1/frames`, detects bikes with Ultralytics YOLO (pretrained `yolo11n`
+  or a custom-trained model) and maps detections to the slot polygons configured for each `X-Device-Id`.
+- **Ground footprint matching:** only the bottom 30 % of a bike box is compared with a slot polygon,
+  because the upper part of a bike overlaps neighbouring slots in a perspective view.
+- **Debouncing:** a slot changes state only after 3 consecutive frames agree, so passers-by and
+  single-frame detection dropouts do not cause flicker.
+- **Fail-safe:** the model loads in the background so the camera's 5 s HTTP timeout is never hit;
+  detection errors report `unknown` instead of stale or guessed states; a backend outage never blocks
+  frame intake.
+- Slot polygons are drawn on the live frame in a built-in calibration page and stored as JSON per camera.
+- Frames stay in memory (latest per camera, for calibration). Training data capture is a separate,
+  explicit opt-in (`RECORD_DIR`).
+- The detector is an interface (`detect(jpeg) -> boxes`), so the model can be swapped without touching
+  the rest of the pipeline; tests use a fake detector and run without PyTorch.
 
 ### Backend (`code/backend`)
 
@@ -60,7 +69,7 @@ each component be developed and tested on its own against the contract in [`api.
 
 | Area | Tooling |
 |---|---|
-| Backend | ruff (lint + format), pytest |
+| Backend, vision | ruff (lint + format), pytest |
 | Web app | ESLint, TypeScript, production build |
 | Firmware | PlatformIO build |
 

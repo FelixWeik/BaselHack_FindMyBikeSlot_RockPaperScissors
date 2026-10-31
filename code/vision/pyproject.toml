@@ -1,0 +1,46 @@
+[project]
+name = "bikeslot-vision"
+version = "0.1.0"
+description = "Find my Bike Slot vision service: receives camera frames, detects bikes, reports slot states"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi>=0.162.0",
+    "uvicorn[standard]>=0.54.0",
+    "httpx>=0.28.1",
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+# Heavy (PyTorch). Not needed for tests; install with: uv sync --group model
+model = [
+    "ultralytics>=8.3.0",
+    "torch>=2.5",
+    "torchvision>=0.20",
+]
+
+# CPU-only PyTorch: inference runs on a laptop and the CUDA wheels are several GB.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
