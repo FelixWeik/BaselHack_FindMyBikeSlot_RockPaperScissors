@@ -61,7 +61,13 @@ function start() {
   });
   window.addEventListener("appinstalled", () => set({ installed: true, installEvent: null }));
 
-  if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
+  if (!("serviceWorker" in navigator)) return;
+  if (process.env.NODE_ENV !== "production") {
+    // A worker left over from a production build would keep serving stale chunks to the dev server.
+    void navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => void r.unregister()));
+    void caches?.keys().then((keys) => keys.filter((k) => k.startsWith("bikespot-")).forEach((k) => void caches.delete(k)));
+    return;
+  }
   // Only after the user accepted: the first install also changes the controller, and must not reload the page.
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (updateAccepted) window.location.reload();
