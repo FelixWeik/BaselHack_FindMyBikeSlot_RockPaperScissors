@@ -19,7 +19,22 @@ uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port
 
 The model loads in the background at startup. Frames received before that are accepted and reported as `not_ready`.
 
-No camera at hand? `uv run python demo/demo_camera.py` plays recorded scenes as a camera node would.
+## Demo without a camera
+
+`demo/demo_camera.py` plays prepared scenes of a bike rack (`demo/frames/`) and sends them exactly like
+a camera node, one frame per second. Bikes arrive and leave every 10 s, so the whole system can be shown
+on one screen: the calibration page at `http://localhost:8001/` and the web app side by side.
+
+```bash
+uv run python demo/demo_camera.py            # vision, backend and web app must be running
+```
+
+It registers its slots itself (`demo/cam-demo.slots.json`); the backend maps them to the parking
+`demo` (`code/backend/parkings/demo.json`). The scenes are composed from photos the team took of a bike
+shelter in Basel: an empty shelter with bikes cut out of other photos, number plate blurred. Every scene
+is checked to be classified correctly by the default model.
+
+## Calibrate slots
 
 ## What happens to a frame
 

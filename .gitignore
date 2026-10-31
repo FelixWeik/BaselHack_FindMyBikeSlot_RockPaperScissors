@@ -20,3 +20,5 @@ assets/data-pictures.zip
 code/vision/training/data/
 code/vision/training/runs/
 *.pt
+# Written at runtime by the vision demo camera
+code/vision/slots/cam-demo.json

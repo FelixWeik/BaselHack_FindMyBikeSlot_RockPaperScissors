@@ -16,8 +16,8 @@ about which area still has space.
 ## How it works
 
 ```
-┌──────────────┐  JPEG / 1 s   ┌──────────────┐  bike boxes   ┌──────────────┐  occupancy ┌──────────────┐
-│ Camera node  │ ────────────▶ │    Vision    │ ────────────▶ │   Backend    │ ─────────▶ │   Web app    │
+┌──────────────┐  JPEG / 1 s   ┌──────────────┐  slot states  ┌──────────────┐  heatmap   ┌──────────────┐
+│ Camera node  │ ────────────> │    Vision    │ ────────────> │   Backend    │ ─────────> │   Web app    │
 │ ESP32-S3     │  HTTP POST    │  detection   │  JSON         │ FastAPI      │  JSON      │ Next.js PWA  │
 │ + OV3660     │               │  (in memory) │               │ + SQLite     │            │              │
 └──────────────┘               └──────────────┘               └──────────────┘            └──────────────┘
