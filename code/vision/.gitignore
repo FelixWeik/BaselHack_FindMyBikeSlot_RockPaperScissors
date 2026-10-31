@@ -6,3 +6,5 @@ __pycache__/
 recordings/
 *.pt
 *.onnx
+!models/bikes.pt
+training/output/
