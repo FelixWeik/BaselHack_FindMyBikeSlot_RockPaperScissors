@@ -1,0 +1,193 @@
+"use client";
+
+import { MOCK_MODE, fetchDebug, fetchHeatmap, fetchParkings } from "./api";
+import { analyze, overallChance, type RegionStat } from "./geometry";
+import type { Sample } from "./recommend";
+import type { Clock, ParkingHeatmap, ParkingLotConfig } from "./types";
+
+const STORAGE_KEY = "fmbs.live.v2";
+const LEGACY_KEYS = ["fmbs.configs", "fmbs.heatmaps", "fmbs.parking"];
+const POLL_MS = 5000;
+const MAX_BACKOFF_MS = 30_000;
+const CONFIG_REFRESH_MS = 5 * 60_000;
+const PERSIST_MS = 30_000;
+const HISTORY_MS = 10 * 60_000;
+
+export interface LiveEntry {
+  heatmap: ParkingHeatmap;
+  stats: RegionStat[];
+  overall: number;
+  fetchedAt: number;
+  history: Sample[];
+}
+
+export interface LiveSnapshot {
+  parkings: ParkingLotConfig[] | null;
+  entries: Record<string, LiveEntry>;
+  /** A refresh has finished at least once since the app started. */
+  settled: boolean;
+  failing: boolean;
+  simulatedClock: Clock | null;
+}
+
+const EMPTY: LiveSnapshot = { parkings: null, entries: {}, settled: false, failing: false, simulatedClock: null };
+
+let snapshot = EMPTY;
+const listeners = new Set<() => void>();
+let started = false;
+let timer: ReturnType<typeof setTimeout> | undefined;
+let inflight: Promise<void> | null = null;
+let failures = 0;
+let configsAt = 0;
+let persistedAt = 0;
+
+function emit(next: Partial<LiveSnapshot>) {
+  snapshot = { ...snapshot, ...next };
+  listeners.forEach((l) => l());
+}
+
+function buildEntry(config: ParkingLotConfig, heatmap: ParkingHeatmap, fetchedAt: number, history: Sample[]): LiveEntry {
+  const stats = analyze(config, heatmap);
+  return { heatmap, stats, overall: overallChance(stats), fetchedAt, history };
+}
+
+function hydrate() {
+  try {
+    LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw) as {
+      parkings: ParkingLotConfig[];
+      heat: Record<string, { heatmap: ParkingHeatmap; fetchedAt: number; history: Sample[] }>;
+      simulatedClock?: Clock | null;
+    };
+    const entries: Record<string, LiveEntry> = {};
+    for (const config of saved.parkings) {
+      const h = saved.heat[config.id];
+      if (h) entries[config.id] = buildEntry(config, h.heatmap, h.fetchedAt, h.history ?? []);
+    }
+    snapshot = { ...snapshot, parkings: saved.parkings, entries, simulatedClock: saved.simulatedClock ?? null };
+  } catch {
+    // corrupted or unavailable storage: start empty
+  }
+}
+
+function persist() {
+  try {
+    const heat = Object.fromEntries(
+      Object.entries(snapshot.entries).map(([id, e]) => [
+        id,
+        { heatmap: e.heatmap, fetchedAt: e.fetchedAt, history: e.history },
+      ]),
+    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ parkings: snapshot.parkings, heat, simulatedClock: snapshot.simulatedClock }));
+    persistedAt = Date.now();
+  } catch {
+    // quota exceeded or storage disabled
+  }
+}
+
+export function clearLiveCache() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // storage disabled
+  }
+  snapshot = { ...EMPTY, simulatedClock: snapshot.simulatedClock };
+  configsAt = 0;
+  listeners.forEach((l) => l());
+  void refresh();
+}
+
+async function load() {
+  let failed = false;
+
+  let parkings = snapshot.parkings;
+  if (!parkings || Date.now() - configsAt > CONFIG_REFRESH_MS) {
+    try {
+      parkings = await fetchParkings();
+      configsAt = Date.now();
+    } catch {
+      failed = true;
+    }
+  }
+
+  const entries = { ...snapshot.entries };
+  if (parkings) {
+    await Promise.allSettled(
+      parkings.map(async (config) => {
+        try {
+          const heatmap = await fetchHeatmap(config.id);
+          const fetchedAt = Date.now();
+          const previous = entries[config.id]?.history ?? [];
+          const entry = buildEntry(config, heatmap, fetchedAt, []);
+          const sample: Sample = {
+            t: fetchedAt,
+            overall: entry.overall,
+            zones: Object.fromEntries(entry.stats.map((s) => [s.key, s.chance])),
+          };
+          entry.history = [...previous.filter((s) => fetchedAt - s.t < HISTORY_MS), sample];
+          entries[config.id] = entry;
+        } catch {
+          failed = true;
+        }
+      }),
+    );
+  }
+
+  let simulatedClock = snapshot.simulatedClock;
+  if (MOCK_MODE) {
+    try {
+      simulatedClock = (await fetchDebug()).clock;
+    } catch {
+      // keep the previous value; the heatmap calls already report connectivity
+    }
+  }
+
+  failures = failed ? failures + 1 : 0;
+  emit({ parkings, entries, settled: true, failing: failed, simulatedClock });
+  if (Date.now() - persistedAt > PERSIST_MS) persist();
+}
+
+function schedule() {
+  clearTimeout(timer);
+  if (document.visibilityState === "hidden") return;
+  const delay = failures > 0 ? Math.min(POLL_MS * 2 ** failures, MAX_BACKOFF_MS) : POLL_MS;
+  timer = setTimeout(() => void refresh(), delay);
+}
+
+export function refresh(): Promise<void> {
+  inflight ??= load().finally(() => {
+    inflight = null;
+    schedule();
+  });
+  return inflight;
+}
+
+function start() {
+  if (started) return;
+  started = true;
+  hydrate();
+  void refresh();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void refresh();
+    else {
+      clearTimeout(timer);
+      persist();
+    }
+  });
+  window.addEventListener("online", () => {
+    failures = 0;
+    void refresh();
+  });
+  window.addEventListener("pagehide", persist);
+}
+
+export function subscribeLive(listener: () => void) {
+  start();
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export const getLiveSnapshot = () => snapshot;
+export const getServerLiveSnapshot = () => EMPTY;
