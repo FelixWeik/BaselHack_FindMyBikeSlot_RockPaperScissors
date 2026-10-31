@@ -56,7 +56,42 @@ Invalid payloads are rejected with `422` and a description of the error.
 
 `GET /api/v1/observations/latest` returns the most recent observation per camera (for debugging).
 
-## (3) Backend → Frontend — planned
+## (3) Backend → Frontend — implemented (`code/backend`)
 
-Format: `ParkingHeatmap` from `code/types/parkingHeatmap.ts`. The backend knows the position of every
-slot on the site plan (in metres) and converts slot states into the probability grid.
+The paths match what the web app already calls (`code/frontend/lib/api.ts`). Field names are camelCase.
+
+```
+GET /api/parkings                  → ParkingLotConfig[]   (code/types/parkingLotConfig.ts)
+GET /api/parkings/{id}/heatmap     → ParkingHeatmap       (code/types/parkingHeatmap.ts)
+```
+
+`probabilities` is the chance of finding a **free** slot per 0.5 m cell: `1` = free, `0` = full,
+`0.5` = no current information (camera offline for more than 60 s or no slots mapped), `0` outside regions.
+Cells close to a slot follow its state; cells further away blend towards the free share of their region.
+
+Run the web app against the backend:
+
+```bash
+NEXT_PUBLIC_MOCK_MODE=false NEXT_PUBLIC_API_URL=http://<backend-host>:8000 bun run dev
+```
+
+### Parking configuration
+
+One file per parking in `code/backend/parkings/<id>.json`: the site plan in metres plus where each
+camera slot lies on it.
+
+```json
+{
+  "config": { "version": 1, "id": "memox", "name": "...", "totalSlots": 1,
+              "geometry": { "regions": [{ "id": "A", "boundary": [{ "x": 0, "y": 0 }, ...] }] },
+              "slotSize": { "widthMeters": 0.7, "lengthMeters": 2 },
+              "schedule": { "timezone": "Europe/Zurich", "weekly": { "mon": [{ "start": "06:00", "end": "22:00" }], ... } } },
+  "slots": [
+    { "deviceId": "cam-memox-nord", "slotId": "s1", "region": "A", "x": 2, "y": 1.25 }
+  ]
+}
+```
+
+`deviceId` + `slotId` link a slot drawn in the vision calibration page to its position on the site plan.
+Region polygons can be drawn with the admin zone editor of the web app (exported as JSON).
+The backend validates all files at startup and refuses to start with a broken configuration.

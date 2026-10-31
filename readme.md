@@ -46,8 +46,8 @@ design decisions in [`documentation/architecture.md`](documentation/architecture
 | Camera node firmware | working on hardware |
 | Vision service | in progress |
 | Backend: ingest + storage | working, tested |
-| Backend: heatmap API | planned |
-| Web app | working with mock data |
+| Backend: parkings + live heatmap API | working, tested |
+| Web app | working; live mode against the backend, mock mode for offline demos |
 
 ## Quick start
 

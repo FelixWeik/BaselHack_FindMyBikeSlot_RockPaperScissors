@@ -43,7 +43,11 @@ each component be developed and tested on its own against the contract in [`api.
 - **SQLite:** a single file, no server to operate, enough for a few writes per second. Slot states are
   stored as JSON per observation.
 - **App factory (`create_app`)** lets every test run against its own temporary database.
-- Next step: aggregate observations into the `ParkingHeatmap` format consumed by the web app.
+- **Parking configuration** (`parkings/<id>.json`) holds the site plan in metres and links each camera
+  slot (`deviceId` + `slotId`) to a position on it. This is the bridge between camera pixels and the map.
+- **Heatmap:** each 0.5 m cell gets the chance of a free slot. Nearby slots dominate (Gaussian weight,
+  σ = 1.5 m), far cells blend towards the region's free share, regions without current data show 0.5.
+  Cameras silent for more than 60 s are treated as offline, so the app never shows stale availability.
 
 ### Web app (`code/frontend`)
 

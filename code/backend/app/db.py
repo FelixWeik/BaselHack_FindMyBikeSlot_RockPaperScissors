@@ -68,3 +68,19 @@ class Store:
             }
             for r in rows
         ]
+
+    def current_slot_states(self, max_age_s: float, now: datetime | None = None) -> dict[tuple[str, str], str]:
+        """State per (device_id, slot_id) from each device's latest observation.
+
+        Devices silent for longer than `max_age_s` are left out, so their slots count as unknown
+        instead of showing a stale state.
+        """
+        now = now or datetime.now(UTC)
+        states = {}
+        for obs in self.latest_per_device():
+            received = datetime.strptime(obs["received_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+            if (now - received).total_seconds() > max_age_s:
+                continue
+            for slot in obs["slots"]:
+                states[(obs["device_id"], slot["slot_id"])] = slot["state"]
+        return states
