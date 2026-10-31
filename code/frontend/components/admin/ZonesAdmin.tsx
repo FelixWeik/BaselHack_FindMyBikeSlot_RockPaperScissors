@@ -161,12 +161,15 @@ function ZoneCanvas({
   const [viewBox, setViewBox] = useState<ViewBox>(() => fitViewBox(parking));
   const [drag, setDrag] = useState<DragState | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<string | null>(null);
+  const [shownParkingId, setShownParkingId] = useState(parking.id);
 
-  useEffect(() => {
+  // Reset the view when another parking is shown (adjusting state during render, not in an effect).
+  if (shownParkingId !== parking.id) {
+    setShownParkingId(parking.id);
     setViewBox(fitViewBox(parking));
     setDrag(null);
     setHoveredPoint(null);
-  }, [parking.id]);
+  }
 
   const selectedRegion = parking.geometry.regions.find((region, index) => regionId(region, index) === selectedRegionId) ?? null;
   const zoom = fitViewBox(parking).w / viewBox.w;
@@ -370,9 +373,6 @@ function ZoneInspector({
   onOpenZoneInfo: (id: string) => void;
   onOpenCameraInfo: (id: string) => void;
 }) {
-  const selectedRegion = parking.geometry.regions.find((region, index) => regionId(region, index) === selectedRegionId) ?? null;
-  const selectedIndex = selectedRegion ? parking.geometry.regions.findIndex((region, index) => regionId(region, index) === selectedRegionId) : -1;
-
   return (
     <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto overflow-x-hidden pr-1">
       <Card className="grid gap-4 p-4">
@@ -531,49 +531,33 @@ function ZoneInspector({
 
 export function ZonesAdmin({ parkings }: Props) {
   const stored = useStoredJSON<ParkingAdminDocument>(KEY);
-  const [doc, setDoc] = useState<ParkingAdminDocument>(() => seedDocument(parkings));
+  // `draft` stays null until the first edit; until then the stored setup (or the live parkings) is shown.
+  const [draft, setDraft] = useState<ParkingAdminDocument | null>(null);
   const [selectedParkingId, setSelectedParkingId] = useState(parkings[0]?.id ?? "");
-  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [pickedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [zonePopupId, setZonePopupId] = useState<string | null>(null);
   const [cameraPopupId, setCameraPopupId] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
+
+  const initial = useMemo(() => (stored && stored.version === 1 ? stored : seedDocument(parkings)), [stored, parkings]);
+  const doc = draft ?? initial;
+  const setDoc = (update: (current: ParkingAdminDocument) => ParkingAdminDocument) => setDraft((current) => update(current ?? initial));
 
   useEffect(() => {
-    if (loaded) return;
-    setDoc(stored && stored.version === 1 ? stored : seedDocument(parkings));
-    setLoaded(true);
-  }, [stored, parkings, loaded]);
-
-  useEffect(() => {
-    if (!selectedParkingId && doc.parkings[0]) setSelectedParkingId(doc.parkings[0].id);
-    if (selectedParkingId && !doc.parkings.some((parking) => parking.id === selectedParkingId) && doc.parkings[0]) setSelectedParkingId(doc.parkings[0].id);
-  }, [doc.parkings, selectedParkingId]);
-
-  useEffect(() => {
-    if (doc.parkings.length === 0) return;
-    const parking = doc.parkings.find((item) => item.id === selectedParkingId) ?? doc.parkings[0];
-    const firstRegion = parking.geometry.regions[0];
-    if (!selectedRegionId && firstRegion) setSelectedRegionId(regionId(firstRegion, 0));
-    if (selectedRegionId && !parking.geometry.regions.some((region, index) => regionId(region, index) === selectedRegionId)) {
-      setSelectedRegionId(firstRegion ? regionId(firstRegion, 0) : null);
-    }
-  }, [doc.parkings, selectedParkingId, selectedRegionId]);
-
-  useEffect(() => {
-    if (!loaded) return;
-    saveDoc(doc);
-  }, [doc, loaded]);
+    if (draft) saveDoc(draft);
+  }, [draft]);
 
   const parking = doc.parkings.find((item) => item.id === selectedParkingId) ?? doc.parkings[0];
   if (!parking) return null;
 
-  const selectedRegion = parking.geometry.regions.find((region, index) => regionId(region, index) === selectedRegionId) ?? null;
+  // Fall back to the first zone when nothing (or a deleted zone) is selected.
+  const firstRegion = parking.geometry.regions[0];
+  const selectedRegionId = parking.geometry.regions.some((region, index) => regionId(region, index) === pickedRegionId)
+    ? pickedRegionId
+    : firstRegion
+      ? regionId(firstRegion, 0)
+      : null;
   const popupRegion = zonePopupId ? parking.geometry.regions.find((region, index) => regionId(region, index) === zonePopupId) ?? null : null;
   const popupCamera = cameraPopupId ? parking.cameras.find((camera) => camera.id === cameraPopupId) ?? null : null;
-
-  const updateParkingLocal = (mutate: (parking: ParkingLotConfig) => ParkingLotConfig) => {
-    setDoc((current) => updateParking(current, parking.id, mutate));
-  };
 
   const addZone = () => {
     const next = defaultRegion(parking);
@@ -638,7 +622,7 @@ export function ZonesAdmin({ parkings }: Props) {
                 key={item.id}
                 type="button"
                 onClick={() => setSelectedParkingId(item.id)}
-                className={`rounded-2xl px-3 py-3 text-left ${item.id === selectedParkingId ? "bg-primary text-primary-fg" : "bg-surface-2"}`}
+                className={`rounded-2xl px-3 py-3 text-left ${item.id === parking.id ? "bg-primary text-primary-fg" : "bg-surface-2"}`}
               >
                 <div className="font-medium">{item.name}</div>
                 <div className="text-xs opacity-70">{item.geometry.regions.length} zones · {item.cameras.length} cameras</div>
