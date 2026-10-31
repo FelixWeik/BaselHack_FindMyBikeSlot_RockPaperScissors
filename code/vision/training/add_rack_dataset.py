@@ -13,9 +13,8 @@ import json
 import random
 from pathlib import Path
 
-from PIL import Image, ImageOps
-
 from build_dataset import Output, add_site, check_labels
+from PIL import Image, ImageOps
 
 MAX_SIDE = 1600
 

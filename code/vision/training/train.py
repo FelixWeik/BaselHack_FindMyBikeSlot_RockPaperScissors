@@ -19,7 +19,7 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch", type=int, default=12)
     parser.add_argument("--workers", type=int, default=6)
-    parser.add_argument("--finetune", action="store_true", help="the weights already know bikes: small steps, no warmup")
+    parser.add_argument("--finetune", action="store_true", help="the weights already know bikes: small steps")
     parser.add_argument("--resume", action="store_true", help="carry on an interrupted run from its last.pt")
     args = parser.parse_args()
 
