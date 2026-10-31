@@ -1,6 +1,7 @@
 import logging
 import threading
 import time
+from concurrent.futures import Future
 
 import pytest
 from fastapi.testclient import TestClient
@@ -50,6 +51,17 @@ def make_client(tmp_path):
 
 def post(client, body=JPEG, headers=HEADERS):
     return client.post("/api/v1/frames", content=body, headers=headers)
+
+
+def test_a_capture_that_just_timed_out_does_not_cost_the_camera_its_frame(make_client):
+    client, sent, worker = make_client()
+    cancelled = Future()
+    cancelled.cancel()
+    client.app.state.waiting["cam-test"] = [cancelled]
+    assert post(client).status_code == 200
+    assert client.app.state.waiting == {}
+    assert worker.step()
+    assert sent[0]["device_id"] == "cam-test"
 
 
 def test_frame_reports_normalized_boxes_even_for_an_uncalibrated_camera(make_client):

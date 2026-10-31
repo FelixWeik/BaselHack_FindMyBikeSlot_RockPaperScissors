@@ -16,11 +16,13 @@ All timestamps are ISO 8601 in UTC, e.g. `2026-10-31T10:15:02Z`.
 ```
 POST http://<vision-host>:8001/api/v1/frames
 Content-Type: image/jpeg
-X-Device-Id: cam-memox-nord      unique camera name: letters, digits, - and _
+X-Device-Id: cam-a1b2c3          unique camera name: letters, digits, - and _
 X-RSSI: -55                      WiFi signal in dBm
 X-Uptime-S: 1234                 seconds since camera boot
-Body: JPEG, every second
+Body: JPEG, about three a second
 ```
+
+A simulated camera (`code/vision/demo`) sends the same request, with an ID starting with `sim-`.
 
 `200` means received, before the frame is analysed: `{"ok": true}`. The camera counts any other response as a failure.
 Invalid frames (missing `X-Device-Id`, not a complete JPEG, larger than 2 MB) get `400`/`413`.
@@ -72,6 +74,9 @@ GET    /api/v1/parkings/{id}/cameras      → each camera's own reading, for dia
 GET    /api/v1/devices                    → Device[]             (cameras heard since the backend started)
 ```
 
+A device's `analysis` tells whether its last image could be analysed, and `simulated` marks a `sim-` camera. A simulated
+camera is otherwise counted like any other.
+
 ### Configuration
 
 A *region* (the admin's "sub-zone") is a physical zone. It belongs to the parking and holds the capacity
@@ -121,7 +126,7 @@ that already belongs to another parking.
 `/cameras` returns the same per camera, before merging, with `rawOccupancy` (unbounded), `online` and `analysis`
 (`ok`, `dark`, `failed`, `not_ready` or `offline`).
 
-Run the web app against the backend:
+To run the web app against the backend: `scripts/start.sh`. On its own, with an address the browser can reach:
 
 ```bash
 MOCK_MODE=false NEXT_PUBLIC_API_URL=http://<backend-host>:8000 bun run dev

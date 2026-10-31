@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useLive, type Connection } from "@/hooks/useLive";
 import { useNow } from "@/hooks/useNow";
 import { OfflineIcon } from "@/components/ui/Icons";
+import { Card } from "@/components/ui/primitives";
 
 export function formatAge(sec: number): string {
   if (sec < 60) return `${sec}s`;
@@ -49,6 +51,19 @@ export function LiveStatus() {
       )}
       {text}
     </button>
+  );
+}
+
+/** The server answered and has no parking yet: nothing is loading anymore, and the admin is where they're created. */
+export function NoParkings() {
+  return (
+    <Card className="grid justify-items-start gap-3 p-5">
+      <p className="font-display text-2xl font-bold">No parking yet</p>
+      <p className="text-muted">Set one up in the admin: pick a camera, then draw the zones it watches.</p>
+      <Link href="/admin" className="tap inline-flex min-h-11 items-center rounded-full bg-primary px-4 font-semibold text-primary-fg">
+        Open the admin
+      </Link>
+    </Card>
   );
 }
 

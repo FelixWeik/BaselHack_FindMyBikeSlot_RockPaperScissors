@@ -209,6 +209,7 @@ describe("admin calibration", () => {
     expect(drawingIssues([])).toHaveLength(1);
     expect(drawingIssues([{ ...zone("a"), capacity: 0 }])[0]).toContain("capacity");
     expect(drawingIssues([{ ...zone("a"), imagePolygon: [] }])[0]).toContain("isn't drawn");
+    expect(drawingIssues([{ ...zone("a"), imagePolygon: [{ x: 0, y: 0 }, { x: 0.5, y: 0.5 }, { x: 1, y: 1 }] }])[0]).toContain("no area");
     expect(drawingIssues([zone("a")])).toEqual([]);
   });
 

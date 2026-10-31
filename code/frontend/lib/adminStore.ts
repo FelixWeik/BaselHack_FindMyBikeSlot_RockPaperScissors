@@ -13,9 +13,11 @@ export interface AdminState {
   parkings: AdminParking[];
   devices: Device[];
   save: "saved" | "saving" | "failed";
+  /** Why the last save failed, in the backend's words. */
+  saveError: string | null;
 }
 
-const INITIAL: AdminState = { status: "loading", parkings: [], devices: [], save: "saved" };
+const INITIAL: AdminState = { status: "loading", parkings: [], devices: [], save: "saved", saveError: null };
 
 let state = INITIAL;
 const listeners = new Set<() => void>();
@@ -47,7 +49,7 @@ export async function loadAdmin() {
 
 /** Saves one change at a time, in order, so an older save can't land after a newer one. */
 async function drain(): Promise<boolean> {
-  emit({ save: "saving" });
+  emit({ save: "saving", saveError: null });
   try {
     while (pending.size > 0) {
       const [id, parking] = pending.entries().next().value as [string, AdminParking | null];
@@ -58,8 +60,8 @@ async function drain(): Promise<boolean> {
     emit({ save: "saved" });
     reloadConfigs();
     return true;
-  } catch {
-    emit({ save: "failed" });
+  } catch (error) {
+    emit({ save: "failed", saveError: error instanceof Error ? error.message : null });
     return false;
   }
 }

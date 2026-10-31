@@ -32,6 +32,20 @@ struct WifiNetwork {
 #endif
 const WifiNetwork WIFI_LIST[] = WIFI_NETWORKS;
 
+String deviceId;  // set once at boot
+
+// The last half of the MAC address tells the boards apart, without configuring each one.
+String makeDeviceId() {
+#ifdef DEVICE_ID
+  return DEVICE_ID;
+#else
+  uint64_t mac = ESP.getEfuseMac();  // the first byte of the address is the lowest one here
+  char id[16];
+  snprintf(id, sizeof(id), "cam-%02x%02x%02x", (uint8_t)(mac >> 24), (uint8_t)(mac >> 32), (uint8_t)(mac >> 40));
+  return id;
+#endif
+}
+
 // ---------- Status LED ----------
 // short flash  = frame delivered
 // steady on    = connecting to WiFi, or the last upload failed
@@ -214,7 +228,7 @@ void visionDisconnect() {
 // Prefer mDNS so the vision host can change IP; fall back to the static IP from config.h.
 void resolveVision() {
   static bool mdnsStarted = false;
-  if (!mdnsStarted) mdnsStarted = MDNS.begin(DEVICE_ID);
+  if (!mdnsStarted) mdnsStarted = MDNS.begin(deviceId.c_str());
   IPAddress previous = visionIp;
   IPAddress ip = MDNS.queryHost(VISION_HOSTNAME, 3000);
   if (ip != IPAddress(0, 0, 0, 0)) {
@@ -235,7 +249,7 @@ int sendFrame(camera_fb_t *fb, bool *reused) {
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.begin(visionClient, visionIp.toString(), VISION_PORT, VISION_PATH);
   http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("X-Device-Id", DEVICE_ID);
+  http.addHeader("X-Device-Id", deviceId);
   http.addHeader("X-RSSI", String(WiFi.RSSI()));
   http.addHeader("X-Uptime-S", String(millis() / 1000));
   int code = http.POST(fb->buf, fb->len);  // stream straight from the frame buffer, no copy
@@ -259,7 +273,7 @@ bool otaRunning = false;
 
 // Listens for password-protected firmware updates on port 3232.
 void otaSetup() {
-  ArduinoOTA.setHostname(DEVICE_ID);
+  ArduinoOTA.setHostname(deviceId.c_str());
   ArduinoOTA.setPassword(OTA_PASSWORD);
   ArduinoOTA.setMdnsEnabled(false);  // mDNS is already started in resolveVision()
   ArduinoOTA.onStart([]() {
@@ -293,7 +307,8 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   ledOff();
   delay(2000);  // give the serial monitor time to attach
-  Serial.printf("\n=== Camera '%s' booting (reset reason: %s) ===\n", DEVICE_ID, resetReasonText());
+  deviceId = makeDeviceId();
+  Serial.printf("\n=== Camera '%s' booting (reset reason: %s) ===\n", deviceId.c_str(), resetReasonText());
   watchdogStart();
 
   if (!cameraInit()) {

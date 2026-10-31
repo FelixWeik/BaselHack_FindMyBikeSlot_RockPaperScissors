@@ -1,5 +1,5 @@
 import { boxOf } from "./geometry";
-import type { ParkingLotConfig, ParkingRegion, ParkingSchedule, Point } from "./types";
+import type { Device, ParkingLotConfig, ParkingRegion, ParkingSchedule, Point } from "./types";
 
 /** Admin vocabulary: a parking is a "zone", its regions are the "sub-zones". */
 export const GRID = 0.5;
@@ -8,6 +8,15 @@ export type AdminRegion = ParkingRegion;
 export type AdminParking = ParkingLotConfig;
 
 export const snapGrid = (value: number) => Math.round(value / GRID) * GRID;
+
+/** An online camera may still give no measurement, which is why a zone can be unknown while its camera is up. */
+export function deviceStatus(device: Pick<Device, "online" | "analysis">) {
+  if (!device.online) return "Offline";
+  if (device.analysis === "dark") return "Online, too dark to analyse";
+  if (device.analysis === "not_ready") return "Online, model still loading";
+  if (device.analysis === "failed") return "Online, analysis failing";
+  return "Online";
+}
 
 export const uniqueId = (taken: Set<string>, prefix: string) => {
   let n = taken.size + 1;

@@ -2,7 +2,7 @@
 
 import { InstallCard } from "@/components/settings/InstallCard";
 import { PageHeader } from "@/components/shell/PageHeader";
-import { StaleNotice, UnreachableState } from "@/components/shell/LiveStatus";
+import { NoParkings, StaleNotice, UnreachableState } from "@/components/shell/LiveStatus";
 import { ListSkeleton, SectionTitle } from "@/components/ui/primitives";
 import { useLive, useRecommendation } from "@/hooks/useLive";
 import { useSettings } from "@/lib/settings";
@@ -26,8 +26,10 @@ export function HomeScreen() {
       <StaleNotice />
       {unreachable ? (
         <UnreachableState />
-      ) : loading || items.length === 0 ? (
+      ) : loading ? (
         <ListSkeleton />
+      ) : items.length === 0 ? (
+        <NoParkings />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
           <div className="flex flex-col gap-4">

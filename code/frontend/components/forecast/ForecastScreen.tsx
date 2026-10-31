@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ParkingChips } from "@/components/shell/ParkingChips";
 import { PageHeader } from "@/components/shell/PageHeader";
-import { UnreachableState } from "@/components/shell/LiveStatus";
+import { NoParkings, UnreachableState } from "@/components/shell/LiveStatus";
 import { Card, MapSkeleton, SectionTitle } from "@/components/ui/primitives";
 import { useLive, useSelection, type ParkingItem } from "@/hooks/useLive";
 import { DAYS, chanceAt, formatHour, freesUpAt, tightFrom } from "@/lib/forecast";
@@ -82,14 +82,14 @@ function ForecastBody({ item }: { item: ParkingItem }) {
 }
 
 export function ForecastScreen() {
-  const { items, unreachable } = useLive();
+  const { items, loading, unreachable } = useLive();
   const { item, selectParking } = useSelection(items);
 
   return (
     <>
       <PageHeader eyebrow="Forecast" title={item?.config.name ?? "Forecast"} />
       {!item ? (
-        unreachable ? <UnreachableState /> : <MapSkeleton />
+        unreachable ? <UnreachableState /> : loading ? <MapSkeleton /> : <NoParkings />
       ) : (
         <>
           <ParkingChips items={items} selectedId={item.config.id} onSelect={selectParking} />

@@ -1,6 +1,7 @@
 # Camera node firmware
 
-Each camera node captures a JPEG every second and sends it over WiFi to the vision service.
+Each camera node captures about three JPEGs a second and sends them over WiFi to the vision service. USB only powers
+and flashes the board: plugging it into the server doesn't connect it to anything.
 Nothing is stored on the device: a frame only lives in the camera frame buffer until it is sent.
 
 ```
@@ -20,17 +21,27 @@ Camera node (this project) ──JPEG, HTTP POST──▶ vision service :8001/a
 # 1. Install PlatformIO
 uv tool install platformio          # or: pip install platformio
 
-# 2. Linux only: serial port access
-sudo usermod -aG dialout $USER      # log out and back in, or run: newgrp dialout
+# 2. Linux only: serial port access (the group is `uucp` on Arch, `dialout` on Debian and Ubuntu)
+sudo usermod -aG uucp $USER         # log out and back in, or run: newgrp uucp
 
 # 3. Credentials (git-ignored)
 cp include/secrets.h.example include/secrets.h
-#    then set WiFi SSID, WiFi password and an OTA password
+#    then set the WiFi network, its password, VISION_FALLBACK_IP and an OTA password
 ```
 
-`DEVICE_ID` must be unique per camera, and the camera must find the laptop running the vision service. Set both
-in `secrets.h` (`DEVICE_ID`, `VISION_HOSTNAME`, `VISION_FALLBACK_IP`): they override the defaults in
-`include/config.h`, so nobody has to commit their own laptop. `scripts/start.sh` prints the values for your machine.
+## Several cameras
+
+The same firmware fits every board:
+
+- **ID:** each camera names itself after its MAC address (`cam-a1b2c3`), printed at boot. To force a name, set
+  `DEVICE_ID` in `secrets.h`, one per camera. Zones are mapped to this ID, so changing it means calibrating again.
+- **Server:** each camera looks for `bikeslot.local`, which the vision service announces when `MDNS_HOSTNAME=bikeslot`
+  is set (`scripts/start.sh` does). If nothing answers, it uses `VISION_FALLBACK_IP`, set in `secrets.h` to the IP of the
+  machine running the vision service (`scripts/start.sh` prints it). It looks again at each restart. To send to one
+  laptop while another one announces the name, set `VISION_HOSTNAME` in `secrets.h`.
+- **Network:** the camera and the server must be on the same network, and the board only has 2.4 GHz WiFi.
+
+A camera built from an older version keeps sending where it was built to send, until it's flashed once.
 
 ## Build, flash, monitor
 
@@ -40,13 +51,14 @@ Run all `pio` commands from `code/firmware/`.
 pio run -t upload                   # flash over USB
 pio device monitor                  # serial log (Ctrl+C to quit)
 
-pio run -e xiao_s3_ota -t upload    # flash over WiFi; set upload_port in platformio.ini to the camera IP
+# Flash over WiFi, with the OTA password this camera was built with
+pio run -e xiao_s3_ota -t upload --upload-port <camera-ip>
 ```
 
 Expected log:
 
 ```
-=== Camera 'cam-memox-nord' booting (reset reason: power on) ===
+=== Camera 'cam-a1b2c3' booting (reset reason: power on) ===
 Camera ready: sensor PID 0x3660 ...
 WiFi connected: IP 192.168.21.63, gateway 192.168.20.1, RSSI -52 dBm
 OTA ready: ...
@@ -67,9 +79,8 @@ python3 tools/test_receiver.py
 
 | LED | Meaning |
 |---|---|
-| short flash every 1 s | frame delivered |
-| fast blinking | connecting to WiFi |
-| steady on | last attempt failed (vision service down? wrong IP?) |
+| short flash per frame | frame delivered |
+| steady on | connecting to WiFi, or the last attempt failed (vision service down? wrong IP?) |
 
 ## Self-recovery
 
@@ -92,10 +103,10 @@ nobody on the network can reboot a camera.
 ```
 POST http://<vision-host>:8001/api/v1/frames
 Content-Type: image/jpeg
-X-Device-Id: cam-memox-nord      camera name (config.h)
+X-Device-Id: cam-a1b2c3          camera name, from the MAC address
 X-RSSI: -55                      WiFi signal in dBm
 X-Uptime-S: 1234                 seconds since boot
-Body: JPEG, 640x480
+Body: JPEG, 1024x768
 ```
 
 `200` means delivered; any other response counts as a failure. See [`documentation/api.md`](../../documentation/api.md).
@@ -104,22 +115,24 @@ Body: JPEG, 640x480
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `DEVICE_ID` | `cam-memox-nord` | camera name, unique per camera; override in `secrets.h` |
-| `VISION_HOSTNAME` / `VISION_FALLBACK_IP` | `tempestD` / `192.168.22.2` | target host: mDNS (`.local`) first, then static IP; override in `secrets.h` |
-| `FRAME_SIZE` | `FRAMESIZE_VGA` (640×480) | resolution |
+| `DEVICE_ID` | unset: `cam-` + end of the MAC address | camera name, unique per camera; override in `secrets.h` |
+| `VISION_HOSTNAME` | `bikeslot` | target host, via mDNS (`.local`); override in `secrets.h` |
+| `VISION_FALLBACK_IP` | `192.168.22.2` | target host when mDNS doesn't answer; override in `secrets.h` |
+| `FRAME_SIZE` | `FRAMESIZE_XGA` (1024×768) | resolution |
 | `JPEG_QUALITY` | `10` | 0..63, lower = sharper but larger |
 | `CAMERA_VFLIP` / `CAMERA_HMIRROR` | `1` / `0` | flip/mirror depending on mounting |
-| `CAPTURE_INTERVAL_MS` | `1000` | time between frames |
+| `CAPTURE_INTERVAL_MS` | `300` | time between frames |
 
 ## Troubleshooting
 
 | Message / symptom | Cause | Fix |
 |---|---|---|
 | `Not a PlatformIO project` | wrong directory | `cd code/firmware` |
-| `Could not open /dev/ttyACM0` | no serial port permission | `newgrp dialout` (see Setup) |
+| `Could not open /dev/ttyACM0` | no serial port permission | see Setup, step 2 |
+| no `/dev/ttyACM0`, kernel log says `error -71` | bad USB contact or a charge-only cable | another cable or port |
 | upload hangs | board not in download mode | hold BOOT, press RESET, release BOOT, upload again |
 | `network not found` / RSSI below −85 dBm | antenna missing | attach the antenna |
 | `connection rejected (wrong password?)` | wrong WiFi password | show the saved password: `nmcli -s -g 802-11-wireless-security.psk connection show <ssid>` |
-| `HTTP -1` | vision service unreachable | is it running? is the IP in `config.h` current? 1–2 failures right after boot are normal |
+| `HTTP -1` | vision service unreachable | is it running? is `VISION_FALLBACK_IP` current? 1–2 failures right after boot are normal |
 | `Camera init failed` | camera module not seated | unplug USB, press the camera module firmly into place |
 | network needs a login page | ESP32 cannot handle captive portals (e.g. eduroam) | use another network or a 2.4 GHz phone hotspot |

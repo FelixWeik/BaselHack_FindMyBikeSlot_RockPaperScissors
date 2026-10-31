@@ -314,6 +314,13 @@ def test_an_uncalibrated_camera_is_discovered(client):
     assert (device["id"], device["kind"], device["online"], device["rssi"]) == ("new", "camera", True, -60)
 
 
+def test_a_simulated_camera_is_flagged_but_counted_like_any_other(client):
+    see(client, "sim-abri", 3)
+    see(client, "cam-a1b2c3", 3)
+    flags = {device["id"]: device["simulated"] for device in client.get("/api/v1/devices").json()}
+    assert flags == {"cam-a1b2c3": False, "sim-abri": True}
+
+
 def test_a_silent_camera_goes_offline(client, clock):
     see(client, "c1", 0)
     clock.now += TTL + 1

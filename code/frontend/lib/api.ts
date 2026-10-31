@@ -32,7 +32,16 @@ const isDebug = (v: unknown): v is DebugState => isObj(v) && isObj(v.zones);
 
 async function send(path: string, init: RequestInit) {
   const res = await fetch(`${BASE}${PREFIX}${path}`, { ...init, signal: AbortSignal.timeout(8000) });
-  if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(await refusal(res, `${path}: HTTP ${res.status}`));
+}
+
+/** The backend's own explanation. A validation error (422) holds a list, whose first message tells enough. */
+async function refusal(res: Response, fallback: string): Promise<string> {
+  const body: unknown = await res.json().catch(() => null);
+  if (!isObj(body)) return fallback;
+  if (typeof body.detail === "string") return body.detail;
+  const first: unknown = Array.isArray(body.detail) ? body.detail[0] : null;
+  return isObj(first) && typeof first.msg === "string" ? first.msg : fallback;
 }
 
 export const fetchParkings = () => getJson(`${PREFIX}/parkings`, isConfigs, { cache: "no-store" });
@@ -50,10 +59,7 @@ export const fetchOccupancy = (parkingId: string) =>
 /** A fresh, anonymized frame from the camera. The first one is slow: the face detector has to load. */
 export async function captureCalibration(cameraId: string): Promise<Blob> {
   const res = await fetch(`${BASE}${PREFIX}/cameras/${encodeURIComponent(cameraId)}/calibration-capture`, { method: "POST", cache: "no-store", signal: AbortSignal.timeout(70_000) });
-  if (!res.ok) {
-    const body: unknown = await res.json().catch(() => null);
-    throw new Error(isObj(body) && typeof body.detail === "string" ? body.detail : `The capture failed (HTTP ${res.status})`);
-  }
+  if (!res.ok) throw new Error(await refusal(res, `The capture failed (HTTP ${res.status})`));
   return res.blob();
 }
 

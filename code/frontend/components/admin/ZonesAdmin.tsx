@@ -10,11 +10,11 @@ import { ZoneCanvas } from "./ZoneCanvas";
 import { ZoneInspector } from "./ZoneInspector";
 import { ZoneSheet } from "./ZoneSheet";
 
-function SaveStatus({ save }: { save: AdminState["save"] }) {
+function SaveStatus({ save, error }: { save: AdminState["save"]; error: string | null }) {
   if (save === "failed") {
     return (
       <span role="alert" className="flex items-center gap-2 text-sm font-semibold text-[var(--chance-bad)]">
-        Changes not saved
+        Changes not saved{error ? `: ${error}` : ""}
         <button type="button" onClick={() => void flushAdmin()} className="tap min-h-11 rounded-full bg-surface-2 px-4 text-text">
           Try again
         </button>
@@ -33,7 +33,7 @@ const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 const createButton = "tap inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-primary px-4 font-semibold text-primary-fg";
 
 export function ZonesAdmin({ admin }: { admin: AdminState }) {
-  const { parkings, devices, save } = admin;
+  const { parkings, devices, save, saveError } = admin;
   const [parkingId, setParkingId] = useState<string | null>(null);
   const [regionId, setRegionId] = useState<string | null>(null);
   const [zonePopupId, setZonePopupId] = useState<string | null>(null);
@@ -87,7 +87,7 @@ export function ZonesAdmin({ admin }: { admin: AdminState }) {
   return (
     <section className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto lg:overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <SaveStatus save={save} />
+        <SaveStatus save={save} error={saveError} />
         <button type="button" onClick={() => downloadDocument(parkings)} className="tap inline-flex min-h-11 items-center gap-2 rounded-full bg-surface-2 px-4 font-semibold">
           <DownloadIcon size={18} />
           Export JSON

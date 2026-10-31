@@ -23,6 +23,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 
+from .announce import announce
 from .anonymizer import Anonymizer, DefaceAnonymizer
 from .config import Settings
 from .demo_view import DemoView
@@ -82,7 +83,10 @@ def create_app(
         if hasattr(detector, "warmup"):
             detector.warmup()
         worker.start()
+        announcement = await run_in_threadpool(announce, settings.mdns_hostname, settings.port)
         yield
+        if announcement:
+            await run_in_threadpool(announcement.stop)
         worker.stop()
 
     app = FastAPI(title="Find my Bike Slot - Vision", version="0.2.0", lifespan=lifespan)
@@ -108,7 +112,9 @@ def create_app(
         recorder.maybe_save(device_id, jpeg)
         with waiting_lock:
             for future in waiting.pop(device_id, ()):
-                future.set_result(jpeg)
+                # A capture that just timed out is cancelled but may still be listed: it must not cost this frame.
+                if not future.cancelled():
+                    future.set_result(jpeg)
         worker.submit(
             device_id, Pending(jpeg, _number(request.headers.get("x-rssi")), _number(request.headers.get("x-uptime-s")))
         )

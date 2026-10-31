@@ -2,10 +2,18 @@
 # Starts the whole system on this laptop: backend :8000, vision :8001, web app :3000. Ctrl+C stops everything.
 #
 #   scripts/start.sh              # live mode, presenter view on
+#   scripts/start.sh --demo       # the same, plus the simulated cameras (code/vision/demo)
 #   DEMO_VIEW=0 scripts/start.sh  # without the presenter view
 #
 # Linux and macOS. On Windows use WSL, but a camera node can't reach WSL's NAT: see documentation/team-setup.md.
 set -euo pipefail
+
+demo=false
+case "${1:-}" in
+  "") ;;
+  --demo) demo=true ;;
+  *) echo "Usage: $0 [--demo]" >&2; exit 2 ;;
+esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The presenter view shows what the cameras see (faces masked): that's what a test on a laptop is about.
@@ -30,7 +38,7 @@ if [[ "$(uname)" == Darwin ]]; then
   HOST="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
 else
   IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
-  HOST="$(hostname -s)"
+  HOST="$(uname -n)"
 fi
 IP="${IP:-localhost}"
 
@@ -48,7 +56,9 @@ run() {  # name, directory, command...: runs in the background, each log line pr
 
 run backend "$ROOT/code/backend" env VISION_URL="http://localhost:$VISION_PORT" \
   uv run uvicorn app.main:app --host 0.0.0.0 --port "$BACKEND_PORT"
+# Camera nodes look for bikeslot.local. MDNS_HOSTNAME= turns the announcement off, when another laptop already holds it.
 run vision "$ROOT/code/vision" env DEMO_VIEW="$DEMO_VIEW" BACKEND_URL="http://localhost:$BACKEND_PORT" \
+  MDNS_HOSTNAME="${MDNS_HOSTNAME-bikeslot}" PORT="$VISION_PORT" \
   uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port "$VISION_PORT"
 run web "$ROOT/code/frontend" env MOCK_MODE=false NEXT_PUBLIC_API_URL="http://$IP:$BACKEND_PORT" \
   $JS run dev -- --port "$WEB_PORT"
@@ -57,6 +67,10 @@ for _ in $(seq 60); do
   in_use "$BACKEND_PORT" && in_use "$VISION_PORT" && break
   sleep 1
 done
+
+if "$demo"; then
+  run cameras "$ROOT/code/vision" uv run --group model python demo/demo_cameras.py --vision-url "http://localhost:$VISION_PORT"
+fi
 
 cat <<EOF
 
@@ -68,12 +82,11 @@ cat <<EOF
  Camera view     http://localhost:$VISION_PORT/demo   $([[ "$DEMO_VIEW" == 1 ]] && echo "what each camera sees" || echo "off (DEMO_VIEW=0)")
  Backend API     http://localhost:$BACKEND_PORT/docs
 
- Camera node: put these lines in code/firmware/include/secrets.h, then flash it
-   #define DEVICE_ID          "cam-$(echo "$USER" | tr -cd 'a-zA-Z0-9_-' | tr 'A-Z' 'a-z')"
-   #define VISION_HOSTNAME    "$HOST"
+ Camera node: flash it once. It finds bikeslot.local on this network, names itself after its MAC address and
+ shows up in the admin. In case mDNS is blocked here, put this in code/firmware/include/secrets.h first:
    #define VISION_FALLBACK_IP "$IP"
 
- No camera? In another terminal:
+ No camera? Restart with --demo for simulated ones, or to send your own photos, in another terminal:
    cd code/vision && uv run python tools/fake_camera.py
 
  Ctrl+C stops everything.

@@ -1,5 +1,8 @@
 # BaselHack 2026 — Bike Parking Occupancy System
 
+> Cahier des charges d'origine, pas la description du système. Le code a notamment séparé la vision du backend :
+> voir [`architecture.md`](architecture.md) et [`api.md`](api.md).
+
 ## Mission
 
 Implémenter un système d'estimation de l'occupation de parkings à vélos, basé sur plusieurs caméras ESP32-CAM, YOLO26n et une cartographie configurable.

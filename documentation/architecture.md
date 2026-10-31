@@ -16,12 +16,13 @@ each component be developed and tested on its own against the contract in [`api.
 ### Camera node (`code/firmware`)
 
 - **Hardware:** Seeed XIAO ESP32S3 Sense, OV3660 sensor, external antenna. Low cost, small, USB powered.
-- **Push, not pull:** the node POSTs a JPEG every second. No server runs on the device, so there is
+- **Push, not pull:** the node POSTs about three JPEGs a second. No server runs on the device, so there is
   nothing to attack from the network and the node works behind NAT.
+- **One firmware for every board:** a camera's ID comes from its MAC address, so two boards can't be taken for one.
 - **Hardware JPEG:** the sensor encodes JPEG itself; frames are streamed from the PSRAM frame buffer
   straight into the HTTP request without a copy.
-- **Discovery:** the vision host is resolved via mDNS (`<host>.local`) with a static IP fallback,
-  so a changing laptop IP does not require reflashing.
+- **Discovery:** the node looks for `bikeslot.local`, which the vision service announces, with a static IP fallback,
+  so neither another laptop nor a changing IP requires reflashing.
 - **Self-recovery:** task watchdog (30 s), restart after 10 consecutive failures or 60 s without
   WiFi, and the reset reason is logged at boot. A full restart is the most reliable way to recover
   camera driver, WiFi stack and heap together.
@@ -64,6 +65,7 @@ Stateless: it knows cameras by name, and nothing about parkings or zones.
 | Averaging before bounding at 100 % | Cameras reading 25/20 and 15/20 agree on a full zone; bounding first would call it 87 %. `overflow` keeps the anomaly visible. |
 | Plain coloured polygons instead of a grid | A zone has one value. A smooth grid would show precision that the measurement doesn't have. |
 | Overlapping polygons of a camera are refused | An ambiguous bike has no right answer; the wizard blocks it and the API refuses it. Overlaps on the *plan* only warn, as they don't affect counting. |
+| Simulated cameras send images, not numbers | They run the whole real pipeline, so a demo shows real counts and real model errors, and tests the system instead of bypassing it. |
 | Trained detector instead of stock `yolo26n` | The stock model badly under-counts dense racks, which is the case that matters. See `code/vision/training/README.md`. |
 
 ### Web app (`code/frontend`)

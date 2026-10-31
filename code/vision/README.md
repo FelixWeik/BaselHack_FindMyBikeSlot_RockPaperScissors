@@ -19,6 +19,28 @@ uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port
 
 The model loads in the background at startup. Frames received before that are accepted and reported as `not_ready`.
 
+## Simulated cameras
+
+To show or test the system without hardware (`scripts/start.sh --demo`, or by hand with the service running):
+
+```bash
+uv run python demo/demo_cameras.py
+```
+
+They send real images through the same route as a camera node, so the model really analyses them: nothing here sets
+a count or an occupancy. They show up in the admin like any camera, marked as simulated, and are calibrated the same way.
+
+| Camera | Images | Bikes found by the model, whole image |
+|---|---|---|
+| `sim-abri` | one shelter from a fixed viewpoint, seven scenes of 15 s each | 1, 2, 3, 4, 6, 5, 2 |
+| `sim-rack-1` to `sim-rack-6` | one photo of the site each, from `frontend/public/mock` | 2, 6, 13, 5, 0, 19 |
+
+- These are the model's counts, errors included. In `sim-abri`'s empty scene it finds one bike, a wheel at the right edge
+  of the image. With a zone drawn up to 90 % of the width, the scenes count 0, 1, 2, 3, 4, 3, 1, which is what they show.
+- `sim-abri`'s scenes are photomontages: bikes pasted onto a real photo. They are the only images with a changing count
+  from one viewpoint, and a camera's zones only hold for one viewpoint. Say so if you present them.
+- A photo gives a steady count, so a `sim-rack` camera never moves.
+
 ## Presenter view
 
 To show or film what a camera sees, start the service with `DEMO_VIEW=1` and open `http://localhost:8001/demo`.
@@ -85,6 +107,8 @@ RECORD_DIR=recordings uv run --group model uvicorn app.main:create_app --factory
 | `RECORD_DIR` | unset | enables training data capture |
 | `RECORD_EVERY_S` | `10` | capture interval per camera |
 | `DEMO_VIEW` | unset | `1` enables the presenter view at `/demo` |
+| `MDNS_HOSTNAME` | unset | answers for `<name>.local` on the local network, where the camera nodes look for this service (`bikeslot`). If it can't, a warning is logged and the service keeps running |
+| `PORT` | `8001` | the port announced with it; uvicorn's `--port` must match |
 
 ## Endpoints
 

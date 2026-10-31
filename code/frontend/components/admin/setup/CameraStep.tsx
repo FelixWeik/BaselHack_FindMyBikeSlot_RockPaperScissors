@@ -2,7 +2,7 @@
 
 import { ChevronRightIcon } from "@/components/ui/Icons";
 import { Card, SectionTitle } from "@/components/ui/primitives";
-import type { AdminParking } from "@/lib/adminModel";
+import { type AdminParking, deviceStatus } from "@/lib/adminModel";
 import type { Device } from "@/lib/types";
 
 export function CameraStep({ parkings, devices, onPick }: { parkings: AdminParking[]; devices: Device[]; onPick: (camera: { id: string; name: string }) => void }) {
@@ -18,7 +18,7 @@ export function CameraStep({ parkings, devices, onPick }: { parkings: AdminParki
           <button key={device.id} type="button" onClick={() => onPick({ id: device.id, name: device.name })} className="tap flex min-h-14 items-center justify-between gap-3 rounded-2xl bg-surface-2 px-4 text-left">
             <span className="min-w-0">
               <span className="block truncate font-medium">{device.name}</span>
-              <span className="block truncate text-xs text-muted">{device.id} · {device.online ? "Online" : "Offline"}</span>
+              <span className="block truncate text-xs text-muted">{device.simulated ? "Simulated · " : ""}{deviceStatus(device)}</span>
             </span>
             <ChevronRightIcon size={20} />
           </button>

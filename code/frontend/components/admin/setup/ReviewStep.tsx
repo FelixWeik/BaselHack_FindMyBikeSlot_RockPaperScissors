@@ -12,11 +12,12 @@ interface Props {
   submitted: boolean;
   saving: boolean;
   failed: boolean;
+  error: string | null;
   onBack: () => void;
   onSave: () => void;
 }
 
-export function ReviewStep({ draft, target, warnings, submitted, saving, failed, onBack, onSave }: Props) {
+export function ReviewStep({ draft, target, warnings, submitted, saving, failed, error, onBack, onSave }: Props) {
   const capacity = draft.subZones.reduce((sum, zone) => sum + zone.capacity, 0);
   const isNew = draft.target.kind === "new";
 
@@ -64,7 +65,7 @@ export function ReviewStep({ draft, target, warnings, submitted, saving, failed,
 
       {failed && (
         <p role="alert" className="font-semibold text-[var(--chance-bad)]">
-          The zone couldn&apos;t be saved. Check the connection and try again.
+          The zone couldn&apos;t be saved{error ? `: ${error}` : ". Check the connection and try again."}
         </p>
       )}
 

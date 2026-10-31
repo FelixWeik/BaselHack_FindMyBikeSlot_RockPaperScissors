@@ -29,9 +29,12 @@ the lines your camera needs. `Ctrl+C` stops everything.
 | http://localhost:8001/demo | what each camera sees, bikes boxed, faces masked |
 | http://localhost:8000/docs | backend API |
 
-## 2a. No camera: the fake camera
+## 2a. No camera: simulated cameras or the fake camera
 
-In a second terminal:
+`scripts/start.sh --demo` adds seven simulated cameras, marked as such in the admin. Their images go through the real
+model, so their counts are measured: see [the vision README](../code/vision/README.md#simulated-cameras).
+
+To send your own photos instead, in a second terminal:
 
 ```bash
 cd code/vision
@@ -56,13 +59,16 @@ In `include/secrets.h` (git-ignored, so it's only yours):
 
 - **WiFi:** a 2.4 GHz network your laptop is on too. If the venue WiFi doesn't let devices see each other, use
   your phone's hotspot for both the laptop and the camera.
-- **The three lines `scripts/start.sh` printed:** `DEVICE_ID`, `VISION_HOSTNAME`, `VISION_FALLBACK_IP`. Each
-  camera needs its own `DEVICE_ID`.
+- **The line `scripts/start.sh` printed:** `VISION_FALLBACK_IP`, used if mDNS is blocked on the network.
+
+The camera finds the laptop at `bikeslot.local`, and names itself after its MAC address, so one setup fits every board.
+If another laptop on the network is already announcing that name, `start.sh` logs a warning: set `VISION_HOSTNAME` to
+your hostname in `secrets.h`, or agree on who runs the server.
 
 Then plug the camera in and flash it:
 
 ```bash
-pio run -t upload        # Linux, first time: sudo usermod -aG dialout $USER, then log in again
+pio run -t upload        # Linux, first time: sudo usermod -aG dialout $USER (uucp on Arch), then log in again
 pio device monitor       # serial log, Ctrl+C to quit
 ```
 
@@ -86,7 +92,7 @@ for each frame delivered.
 | camera: `HTTP -1` / connection refused | the laptop firewall blocks port 8001: allow it (macOS asks on the first start; on Linux e.g. `sudo ufw allow 8001`) |
 | camera never connects to WiFi | antenna not plugged in, or a 5 GHz-only network |
 | camera page stays dark at night | expected: a frame too dark to read counts as "unknown", never as "empty" |
-| `pio run -t upload` can't find the port | data cable, not a charging-only one; on Linux the `dialout` group (see above) |
+| `pio run -t upload` can't find the port | data cable, not a charging-only one; on Linux the `dialout` or `uucp` group (see above) |
 
 ## Windows
 

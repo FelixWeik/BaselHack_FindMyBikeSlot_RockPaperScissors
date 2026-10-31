@@ -3,7 +3,7 @@
 import { useState, ViewTransition } from "react";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { ParkingChips } from "@/components/shell/ParkingChips";
-import { StaleNotice, UnreachableState } from "@/components/shell/LiveStatus";
+import { NoParkings, StaleNotice, UnreachableState } from "@/components/shell/LiveStatus";
 import { CloseIcon, ShareIcon } from "@/components/ui/Icons";
 import { Card, Gauge, MapSkeleton, Sparkline, TrendLabel } from "@/components/ui/primitives";
 import { useLive, useRecommendation, useSelection, type ParkingItem } from "@/hooks/useLive";
@@ -226,7 +226,7 @@ export function MapScreen() {
       <PageHeader eyebrow="Live map" title={item?.config.name ?? "Map"} live />
       <StaleNotice />
       {!item ? (
-        unreachable ? <UnreachableState /> : <MapSkeleton />
+        unreachable ? <UnreachableState /> : loading ? <MapSkeleton /> : <NoParkings />
       ) : (
         <>
           <ParkingChips items={items} selectedId={item.config.id} onSelect={selectParking} />

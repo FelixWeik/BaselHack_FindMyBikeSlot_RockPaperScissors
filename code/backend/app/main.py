@@ -23,6 +23,7 @@ log = logging.getLogger("uvicorn.error")
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_DB = SERVICE_DIR / "data" / "bikeslot.db"
 CAPTURE_TIMEOUT_S = 60  # the first capture loads the face detector
+SIMULATED_PREFIX = "sim-"  # code/vision/demo: real images and a real analysis, but not a real camera
 
 Capture = Callable[[str], httpx.Response]
 
@@ -84,6 +85,7 @@ def create_app(
                 "id": device_id,
                 "name": device_id,
                 "kind": "camera",
+                "simulated": device_id.startswith(SIMULATED_PREFIX),
                 "lastSeen": utc_iso(info.last_seen),
                 "online": now - info.last_seen <= ttl_s,
                 "analysis": info.status,

@@ -33,6 +33,9 @@ const edges = (polygon: Point[]) => polygon.map((p, i) => [p, polygon[(i + 1) % 
 export const selfCrosses = (polygon: Point[]) =>
   edges(polygon).some(([a, b], i, all) => all.some(([c, d], j) => j > i && segmentsCross(a, b, c, d)));
 
+/** Corners in a line enclose nothing, and the backend refuses them. */
+const hasNoArea = (polygon: Point[]) => Math.abs(edges(polygon).reduce((sum, [a, b]) => sum + a.x * b.y - b.x * a.y, 0)) / 2 <= 1e-9;
+
 const centroid = (polygon: Point[]) => ({
   x: polygon.reduce((sum, p) => sum + p.x, 0) / polygon.length,
   y: polygon.reduce((sum, p) => sum + p.y, 0) / polygon.length,
@@ -57,7 +60,7 @@ export function drawingIssues(subZones: DraftSubZone[]): string[] {
       const label = zone.name.trim() || "A sub-zone";
       return [
         ...(zone.name.trim() ? [] : ["A sub-zone has no name."]),
-        ...(zone.imagePolygon.length < 3 ? [`${label} isn't drawn on the camera view yet.`] : selfCrosses(zone.imagePolygon) ? [`${label} crosses itself on the camera view.`] : []),
+        ...(zone.imagePolygon.length < 3 ? [`${label} isn't drawn on the camera view yet.`] : selfCrosses(zone.imagePolygon) ? [`${label} crosses itself on the camera view.`] : hasNoArea(zone.imagePolygon) ? [`${label} has no area on the camera view.`] : []),
         ...(zone.capacity >= 1 ? [] : [`${label} needs a capacity of at least 1.`]),
       ];
     }),

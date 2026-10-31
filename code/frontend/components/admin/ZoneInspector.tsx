@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { PencilIcon, PlusIcon, TrashIcon } from "@/components/ui/Icons";
 import { Card, SectionTitle } from "@/components/ui/primitives";
-import type { AdminParking } from "@/lib/adminModel";
+import { type AdminParking, deviceStatus } from "@/lib/adminModel";
 import type { Device } from "@/lib/types";
 import { NumberField } from "./NumberField";
 import { ScheduleEditor } from "./ScheduleEditor";
@@ -78,7 +78,8 @@ export function ZoneInspector({ parking, devices, selectedRegionId, onSelectRegi
         {parking.cameras.length === 0 && <p className="text-sm text-muted">No camera watches this zone yet.</p>}
         <div className="grid gap-2">
           {parking.cameras.map((camera) => {
-            const online = devices.find((device) => device.id === camera.id)?.online ?? false;
+            const device = devices.find((candidate) => candidate.id === camera.id);
+            const online = device?.online ?? false;
             return (
             <div key={camera.id} className="flex min-w-0 items-start gap-2 rounded-2xl bg-surface-2 p-2">
               <div className="min-w-0 flex-1 pl-1">
@@ -87,7 +88,7 @@ export function ZoneInspector({ parking, devices, selectedRegionId, onSelectRegi
                   <span className="break-words font-medium whitespace-normal">{camera.name}</span>
                 </div>
                 <div className="text-xs text-muted whitespace-normal break-words">
-                  {online ? "Online" : "Offline"} · {camera.calibratedAt ? `Calibrated ${formatDate(camera.calibratedAt)}` : "Not calibrated"}
+                  {device?.simulated ? "Simulated · " : ""}{device ? deviceStatus(device) : "Offline"} · {camera.calibratedAt ? `Calibrated ${formatDate(camera.calibratedAt)}` : "Not calibrated"}
                 </div>
               </div>
               <Link href={`/admin/setup?camera=${encodeURIComponent(camera.id)}&step=2`} className="tap inline-flex min-h-10 shrink-0 items-center rounded-full bg-surface px-3 text-sm font-semibold">

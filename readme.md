@@ -16,14 +16,14 @@ about which area still has space.
 ## How it works
 
 ```
-┌──────────────┐  JPEG / 1 s   ┌──────────────┐  slot states  ┌──────────────┐  heatmap   ┌──────────────┐
+┌──────────────┐  JPEG, WiFi   ┌──────────────┐  bike boxes   ┌──────────────┐  occupancy ┌──────────────┐
 │ Camera node  │ ────────────> │    Vision    │ ────────────> │   Backend    │ ─────────> │   Web app    │
 │ ESP32-S3     │  HTTP POST    │  detection   │  JSON         │ FastAPI      │  JSON      │ Next.js PWA  │
 │ + OV3660     │               │  (in memory) │               │ + SQLite     │            │              │
 └──────────────┘               └──────────────┘               └──────────────┘            └──────────────┘
 ```
 
-1. **Camera node** (`code/firmware`): a low-cost Seeed XIAO ESP32S3 Sense sends a JPEG every second over WiFi.
+1. **Camera node** (`code/firmware`): a low-cost Seeed XIAO ESP32S3 Sense sends about three JPEGs a second over WiFi.
    It recovers on its own from WiFi loss, hangs and crashes, and can be updated over the air.
 2. **Vision service** (`code/vision`): detects bikes with a YOLO model trained for dense racks, reports their
    positions, and masks faces in the rare image that leaves it: the admin's calibration view.
@@ -63,8 +63,18 @@ Everything on one laptop, with one command. Testing with your own camera node or
 [documentation/team-setup.md](documentation/team-setup.md).
 
 ```bash
-scripts/start.sh
+scripts/start.sh          # backend, vision and web app, on what the camera nodes send
+scripts/start.sh --demo   # the same, plus the simulated cameras
 ```
+
+It prints the URLs. The cameras show up in the admin (`/admin/setup`) after their first frame, simulated ones marked as
+such. Without this script, the web app runs on its offline mock (`cd code/frontend && bun run dev`).
+
+A simulated camera sends real images through the same route as a camera node, so its count is what the model finds
+in them, errors included. See [`code/vision/README.md`](code/vision/README.md#simulated-cameras).
+
+To add a camera node, flash it once ([`code/firmware/README.md`](code/firmware/README.md)): it joins the WiFi and finds
+the vision service on its own, under an ID of its own.
 
 Or each service by hand. Requirements: [uv](https://docs.astral.sh/uv/), [Bun](https://bun.sh/), [PlatformIO](https://platformio.org/).
 
@@ -72,17 +82,17 @@ Or each service by hand. Requirements: [uv](https://docs.astral.sh/uv/), [Bun](h
 # Backend (http://localhost:8000/docs)
 cd code/backend
 uv sync
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 # Vision service
 cd code/vision
 uv sync --group model
-uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8001
+MDNS_HOSTNAME=bikeslot uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8001
 
-# Web app (http://localhost:3000), against the backend
+# Web app (http://localhost:3000), against the backend, at an address a phone can reach too
 cd code/frontend
 bun install
-MOCK_MODE=false NEXT_PUBLIC_API_URL=http://localhost:8000 bun run dev
+MOCK_MODE=false NEXT_PUBLIC_API_URL=http://<this-machine-ip>:8000 bun run dev
 
 # Camera node: see code/firmware/README.md
 cd code/firmware

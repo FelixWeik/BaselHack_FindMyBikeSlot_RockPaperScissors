@@ -33,3 +33,6 @@ class Settings:
     record_every_s: float = field(default_factory=lambda: float(os.getenv("RECORD_EVERY_S", "10")))
     # Presenter view at /demo (latest frame per camera, faces masked, bikes boxed). Off unless DEMO_VIEW=1.
     demo_view: bool = field(default_factory=lambda: os.getenv("DEMO_VIEW", "") == "1")
+    # Announce this service as <name>.local, which is where the camera nodes look for it. Unset = no announcement.
+    mdns_hostname: str = field(default_factory=lambda: os.getenv("MDNS_HOSTNAME", "").strip())
+    port: int = field(default_factory=lambda: int(os.getenv("PORT", "8001")))

@@ -75,6 +75,10 @@ export interface Device {
   lastSeen?: string;
   /** Heard from recently, whether or not its last image could be analysed. */
   online: boolean;
+  /** Whether its last image could be analysed. Only "ok" gives a measurement. */
+  analysis?: "ok" | "dark" | "failed" | "not_ready";
+  /** Real images and a real analysis, but no physical camera behind them. */
+  simulated?: boolean;
   rssi?: number | null;
 }
 

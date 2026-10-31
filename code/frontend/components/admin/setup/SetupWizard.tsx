@@ -42,7 +42,7 @@ function Stepper({ step, reachable, onGo }: { step: number; reachable: number; o
 }
 
 function Wizard({ admin }: { admin: AdminState }) {
-  const { parkings, devices, save } = admin;
+  const { parkings, devices, save, saveError } = admin;
   const params = useSearchParams();
   const router = useRouter();
 
@@ -164,7 +164,7 @@ function Wizard({ admin }: { admin: AdminState }) {
         />
       )}
       {step === 4 && placed && target && (
-        <ReviewStep draft={placed} target={target} warnings={overlapWarnings(applyCalibration(target, placed, ""))} submitted={submitted} saving={submitted && save === "saving"} failed={submitted && save === "failed"} onBack={() => go(3)} onSave={() => void finish()} />
+        <ReviewStep draft={placed} target={target} warnings={overlapWarnings(applyCalibration(target, placed, ""))} submitted={submitted} saving={submitted && save === "saving"} failed={submitted && save === "failed"} error={saveError} onBack={() => go(3)} onSave={() => void finish()} />
       )}
     </>
   );
