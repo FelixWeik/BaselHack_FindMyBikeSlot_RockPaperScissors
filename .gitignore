@@ -20,3 +20,6 @@ assets/data-pictures.zip
 code/vision/training/data/
 code/vision/training/runs/
 *.pt
+
+# npm instead of bun (scripts/start.sh falls back to it): bun.lock is the lockfile
+code/frontend/package-lock.json
