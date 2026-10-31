@@ -74,7 +74,7 @@ Cells close to a slot follow its state; cells further away blend towards the fre
 Run the web app against the backend:
 
 ```bash
-NEXT_PUBLIC_MOCK_MODE=false NEXT_PUBLIC_API_URL=http://<backend-host>:8000 bun run dev
+MOCK_MODE=false NEXT_PUBLIC_API_URL=http://<backend-host>:8000 bun run dev
 ```
 
 ### Parking configuration
