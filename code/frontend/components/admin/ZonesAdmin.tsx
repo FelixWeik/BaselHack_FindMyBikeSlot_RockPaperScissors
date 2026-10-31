@@ -51,8 +51,8 @@ export function ZonesAdmin({ admin }: { admin: AdminState }) {
       {toCalibrate.length === 0 && <p className="text-sm text-muted">Every camera is calibrated.</p>}
       <div className="grid gap-2">
         {toCalibrate.map((device) => (
-          <Link key={device.id} href={`/admin/setup?camera=${encodeURIComponent(device.id)}&step=2`} className="tap flex min-h-11 items-center justify-between gap-2 rounded-2xl bg-surface-2 px-3 py-2">
-            <span className="min-w-0 truncate font-medium">{device.name}</span>
+          <Link key={device.id} href={`/admin/setup?camera=${encodeURIComponent(device.id)}&step=2`} className="tap flex min-h-11 items-start justify-between gap-2 rounded-2xl bg-surface-2 px-3 py-2">
+            <span className="min-w-0 flex-1 break-words whitespace-normal font-medium">{device.name}</span>
             <span className="shrink-0 text-sm font-semibold text-primary">Calibrate</span>
           </Link>
         ))}
@@ -107,7 +107,7 @@ export function ZonesAdmin({ admin }: { admin: AdminState }) {
                   onClick={() => setParkingId(item.id)}
                   className={`rounded-2xl px-3 py-3 text-left ${item.id === parking.id ? "bg-primary text-primary-fg" : "bg-surface-2"}`}
                 >
-                  <div className="truncate font-medium">{item.name || "Unnamed zone"}</div>
+                  <div className="break-words whitespace-normal font-medium">{item.name || "Unnamed zone"}</div>
                   <div className="text-xs opacity-70">
                     {count(item.geometry.regions.length, "sub-zone")} · {count(item.cameras.length, "camera")}
                   </div>
