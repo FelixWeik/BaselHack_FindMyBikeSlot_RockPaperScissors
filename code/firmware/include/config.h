@@ -1,12 +1,21 @@
 // Camera node configuration. All tunables live here.
 #pragma once
 
+// Per-person settings (camera name, target laptop) can be overridden in secrets.h, which is git-ignored,
+// so nobody has to edit this file to test with their own laptop.
+
 // Unique per camera; the backend maps parking zones by this ID.
+#ifndef DEVICE_ID
 #define DEVICE_ID "cam-memox-nord"
+#endif
 
 // Vision service. Resolved via mDNS (<VISION_HOSTNAME>.local) first, then VISION_FALLBACK_IP.
+#ifndef VISION_HOSTNAME
 #define VISION_HOSTNAME "tempestD"  // without ".local"
+#endif
+#ifndef VISION_FALLBACK_IP
 #define VISION_FALLBACK_IP "192.168.22.2"  // only used if mDNS fails; laptop IP on memox.world
+#endif
 #define VISION_PORT 8001
 #define VISION_PATH "/api/v1/frames"
 

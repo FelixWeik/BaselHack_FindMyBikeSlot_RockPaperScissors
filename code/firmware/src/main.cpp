@@ -13,8 +13,8 @@
 #include <esp_task_wdt.h>
 
 #include "camera_pins.h"
+#include "secrets.h"  // before config.h: it may override per-person defaults
 #include "config.h"
-#include "secrets.h"
 
 const int LED_PIN = 21;  // user LED, active low
 
