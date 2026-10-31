@@ -25,7 +25,8 @@ about which area still has space.
 
 1. **Camera node** (`code/firmware`): a low-cost Seeed XIAO ESP32S3 Sense sends a JPEG every 2 seconds over WiFi.
    It recovers on its own from WiFi loss, hangs and crashes, and can be updated over the air.
-2. **Vision service**: detects bikes and maps them to the slots configured for each camera.
+2. **Vision service** (`code/vision`): detects bikes with YOLO, maps them to the slots drawn for each camera
+   in a built-in calibration page, and reports debounced slot states.
 3. **Backend** (`code/backend`): validates and stores per-slot states and serves occupancy data.
 4. **Web app** (`code/frontend`): live occupancy, map, forecast by time of day and week, and an
    admin view to draw parking zones.
@@ -36,6 +37,7 @@ design decisions in [`documentation/architecture.md`](documentation/architecture
 ## Privacy by design
 
 - Images never leave memory: no frame is written to disk on the camera, the vision service or the backend.
+  Capturing training images is a separate, explicit opt-in for the team's own test setup.
 - Only per-slot states (`free` / `occupied` / `unknown`) and timestamps are stored.
 - No identification of people or bikes; the system only counts occupancy.
 
@@ -44,7 +46,8 @@ design decisions in [`documentation/architecture.md`](documentation/architecture
 | Component | Status |
 |---|---|
 | Camera node firmware | working on hardware |
-| Vision service | in progress |
+| Vision service: detection + slot mapping | working, tested |
+| Custom-trained bike model | in training |
 | Backend: ingest + storage | working, tested |
 | Backend: heatmap API | planned |
 | Web app | working with mock data |
@@ -58,6 +61,11 @@ Requirements: [uv](https://docs.astral.sh/uv/), [Bun](https://bun.sh/), [Platfor
 cd code/backend
 uv sync
 uv run uvicorn app.main:app --reload --port 8000
+
+# Vision service (http://localhost:8001 = calibration page)
+cd code/vision
+uv sync --group model
+uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8001
 
 # Web app (http://localhost:3000)
 cd code/frontend
@@ -74,6 +82,7 @@ Run the checks that CI runs:
 
 ```bash
 cd code/backend  && uv run ruff check . && uv run pytest
+cd code/vision   && uv run ruff check . && uv run pytest
 cd code/frontend && bun run lint && bun run build
 cd code/firmware && pio run
 ```
@@ -83,6 +92,7 @@ cd code/firmware && pio run
 ```
 code/
   firmware/   ESP32-S3 camera node (PlatformIO, Arduino)
+  vision/     bike detection service (YOLO), slot calibration page
   backend/    FastAPI service, SQLite storage, pytest suite
   frontend/   Next.js progressive web app
   types/      shared TypeScript types for parking geometry and heatmaps

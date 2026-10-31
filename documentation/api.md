@@ -9,7 +9,7 @@ Camera ──(1) JPEG──▶ Vision :8001 ──(2) JSON──▶ Backend :800
 
 All timestamps are ISO 8601 in UTC, e.g. `2026-10-31T10:15:02Z`.
 
-## (1) Camera → Vision — implemented (`code/firmware`)
+## (1) Camera → Vision — implemented (`code/firmware`, `code/vision`)
 
 ```
 POST http://<vision-host>:8001/api/v1/frames
@@ -21,10 +21,12 @@ Body: JPEG 640x480, every 2 s
 ```
 
 `200` means received; the camera counts any other response as a failure.
+Response body (informational): `{"ok": true, "bikes": 2, "slots": 6}`.
+Invalid frames (missing `X-Device-Id`, not a complete JPEG, larger than 2 MB) get `400`/`413`.
 
 **Privacy:** frames are processed in memory only and discarded afterwards. They are never stored.
 
-## (2) Vision → Backend — implemented (`code/backend`)
+## (2) Vision → Backend — implemented (`code/vision` → `code/backend`)
 
 ```
 POST http://<backend>:8000/api/v1/observations
