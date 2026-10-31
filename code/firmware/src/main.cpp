@@ -176,10 +176,22 @@ bool wifiEnsure() {
 
 // ---------- Upload ----------
 
+// One TCP connection is kept open across frames (HTTP/1.1 keep-alive). A fresh connection per
+// frame costs a TCP handshake and slow-start every time, which dominates upload latency on WiFi.
+WiFiClient visionClient;
+HTTPClient http;
+
+// Drops the kept-alive connection so the next frame reconnects (after errors or an IP change).
+void visionDisconnect() {
+  http.end();
+  visionClient.stop();
+}
+
 // Prefer mDNS so the vision host can change IP; fall back to the static IP from config.h.
 void resolveVision() {
   static bool mdnsStarted = false;
   if (!mdnsStarted) mdnsStarted = MDNS.begin(DEVICE_ID);
+  IPAddress previous = visionIp;
   IPAddress ip = MDNS.queryHost(VISION_HOSTNAME, 3000);
   if (ip != IPAddress(0, 0, 0, 0)) {
     visionIp = ip;
@@ -188,21 +200,24 @@ void resolveVision() {
     visionIp.fromString(VISION_FALLBACK_IP);
     Serial.printf("%s.local not found, using fallback IP %s\n", VISION_HOSTNAME, VISION_FALLBACK_IP);
   }
+  if (visionIp != previous) visionDisconnect();
 }
 
 // Returns the HTTP status code (200 = ok, negative = transport error).
-int sendFrame(camera_fb_t *fb) {
-  HTTPClient http;
-  String url = "http://" + visionIp.toString() + ":" + VISION_PORT + VISION_PATH;
+int sendFrame(camera_fb_t *fb, bool *reused) {
+  *reused = visionClient.connected();
+  http.setReuse(true);
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
   http.setTimeout(HTTP_TIMEOUT_MS);
-  http.begin(url);
+  http.begin(visionClient, visionIp.toString(), VISION_PORT, VISION_PATH);
   http.addHeader("Content-Type", "image/jpeg");
   http.addHeader("X-Device-Id", DEVICE_ID);
   http.addHeader("X-RSSI", String(WiFi.RSSI()));
   http.addHeader("X-Uptime-S", String(millis() / 1000));
   int code = http.POST(fb->buf, fb->len);  // stream straight from the frame buffer, no copy
-  http.end();
+  if (code > 0) http.getString();          // drain the body, otherwise the connection can't be reused
+  http.end();                              // keeps the socket open if the server allowed keep-alive
+  if (code < 0) visionClient.stop();       // a broken socket must not be reused
   return code;
 }
 
@@ -278,11 +293,13 @@ void loop() {
       Serial.println("Capture failed");
       countFailure();
     } else {
-      int code = sendFrame(fb);
+      bool reused = false;
+      int code = sendFrame(fb, &reused);
       size_t len = fb->len;
       esp_camera_fb_return(fb);  // return the buffer immediately so the driver can refill it
-      Serial.printf("Frame: %u bytes -> HTTP %d (%lu ms) | RSSI %d dBm | consecutive failures: %d\n", len, code,
-                    millis() - cycleStart, WiFi.RSSI(), code == 200 ? 0 : failures + 1);
+      Serial.printf("Frame: %u bytes -> HTTP %d (%lu ms, %s) | RSSI %d dBm | consecutive failures: %d\n", len,
+                    code, millis() - cycleStart, reused ? "reused" : "new conn", WiFi.RSSI(),
+                    code == 200 ? 0 : failures + 1);
       if (code == 200) {
         failures = 0;
         ledFlash();
