@@ -16,14 +16,14 @@ about which area still has space.
 ## How it works
 
 ```
-┌──────────────┐  JPEG / 2 s   ┌──────────────┐  slot states  ┌──────────────┐  heatmap   ┌──────────────┐
+┌──────────────┐  JPEG / 1 s   ┌──────────────┐  slot states  ┌──────────────┐  heatmap   ┌──────────────┐
 │ Camera node  │ ────────────▶ │    Vision    │ ────────────▶ │   Backend    │ ─────────▶ │   Web app    │
 │ ESP32-S3     │  HTTP POST    │  detection   │  JSON         │ FastAPI      │  JSON      │ Next.js PWA  │
 │ + OV3660     │               │  (in memory) │               │ + SQLite     │            │              │
 └──────────────┘               └──────────────┘               └──────────────┘            └──────────────┘
 ```
 
-1. **Camera node** (`code/firmware`): a low-cost Seeed XIAO ESP32S3 Sense sends a JPEG every 2 seconds over WiFi.
+1. **Camera node** (`code/firmware`): a low-cost Seeed XIAO ESP32S3 Sense sends a JPEG every second over WiFi.
    It recovers on its own from WiFi loss, hangs and crashes, and can be updated over the air.
 2. **Vision service** (`code/vision`): detects bikes with YOLO, maps them to the slots drawn for each camera
    in a built-in calibration page, and reports debounced slot states.

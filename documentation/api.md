@@ -17,7 +17,7 @@ Content-Type: image/jpeg
 X-Device-Id: cam-memox-nord      unique camera name
 X-RSSI: -55                      WiFi signal in dBm
 X-Uptime-S: 1234                 seconds since camera boot
-Body: JPEG 640x480, every 2 s
+Body: JPEG 640x480, every second
 ```
 
 `200` means received; the camera counts any other response as a failure.

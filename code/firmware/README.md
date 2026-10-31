@@ -1,6 +1,6 @@
 # Camera node firmware
 
-Each camera node captures a JPEG every 2 seconds and sends it over WiFi to the vision service.
+Each camera node captures a JPEG every second and sends it over WiFi to the vision service.
 Nothing is stored on the device: a frame only lives in the camera frame buffer until it is sent.
 
 ```
@@ -66,7 +66,7 @@ python3 tools/test_receiver.py
 
 | LED | Meaning |
 |---|---|
-| short flash every 2 s | frame delivered |
+| short flash every 1 s | frame delivered |
 | fast blinking | connecting to WiFi |
 | steady on | last attempt failed (vision service down? wrong IP?) |
 
@@ -108,7 +108,7 @@ Body: JPEG, 640x480
 | `FRAME_SIZE` | `FRAMESIZE_VGA` (640×480) | resolution |
 | `JPEG_QUALITY` | `10` | 0..63, lower = sharper but larger |
 | `CAMERA_VFLIP` / `CAMERA_HMIRROR` | `1` / `0` | flip/mirror depending on mounting |
-| `CAPTURE_INTERVAL_MS` | `2000` | time between frames |
+| `CAPTURE_INTERVAL_MS` | `1000` | time between frames |
 
 ## Troubleshooting
 

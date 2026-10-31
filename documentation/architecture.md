@@ -16,7 +16,7 @@ each component be developed and tested on its own against the contract in [`api.
 ### Camera node (`code/firmware`)
 
 - **Hardware:** Seeed XIAO ESP32S3 Sense, OV3660 sensor, external antenna. Low cost, small, USB powered.
-- **Push, not pull:** the node POSTs a JPEG every 2 s. No server runs on the device, so there is
+- **Push, not pull:** the node POSTs a JPEG every second. No server runs on the device, so there is
   nothing to attack from the network and the node works behind NAT.
 - **Hardware JPEG:** the sensor encodes JPEG itself; frames are streamed from the PSRAM frame buffer
   straight into the HTTP request without a copy.
