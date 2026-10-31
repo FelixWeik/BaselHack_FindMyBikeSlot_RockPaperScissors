@@ -1,7 +1,7 @@
 import { occupancy } from "./forecast";
 import { boxOf, pointInPolygon, regionKey } from "./geometry";
 import { clockInZone } from "./schedule";
-import type { Clock, DebugState, ForcedState, OpeningWindow, ParkingCamera, ParkingHeatmap, ParkingLotConfig, ParkingRegion, Weekday } from "./types";
+import type { Clock, DebugState, Device, ForcedState, OpeningWindow, ParkingCamera, ParkingHeatmap, ParkingLotConfig, ParkingRegion, Weekday } from "./types";
 
 const CELL = 0.5;
 const TIMEZONE = "Europe/Zurich";
@@ -25,6 +25,21 @@ interface MockParking {
 }
 
 const poly = (...pts: [number, number][]): ParkingRegion["boundary"] => pts.map(([x, y]) => ({ x, y }));
+
+/** A shape on a mock camera photo, from pixels of its 2000x1500 preview to normalized image coordinates. */
+const onPhoto = (...pts: [number, number][]): ParkingRegion["imagePolygon"] => pts.map(([x, y]) => ({ x: Math.round((x / 2000) * 1000) / 1000, y: Math.round((y / 1500) * 1000) / 1000 }));
+
+const CALIBRATED_AT = "2026-10-29T08:45:00Z";
+
+/** Mock cameras, each with a photo of a real bike parking standing in for its view. */
+const SNAPSHOTS: Record<string, string> = {
+  "cam-p1-1": "/mock/IMG_20261029_083657.jpg",
+  "cam-p1-2": "/mock/IMG_20261029_083851.jpg",
+  "cam-p2-1": "/mock/IMG_20261029_084403.jpg",
+  "cam-p3-1": "/mock/IMG_20261029_083750.jpg",
+  "cam-shelter-bus": "/mock/IMG_20261029_084016.jpg",
+  "cam-shelter-entrance": "/mock/IMG_20261029_084104.jpg",
+};
 
 const WEEKDAYS: Weekday[] = ["mon", "tue", "wed", "thu", "fri"];
 const ALL_DAYS: Weekday[] = [...WEEKDAYS, "sat", "sun"];
@@ -60,16 +75,16 @@ const PARKINGS: MockParking[] = [
     config: config(
       "p1",
       "Parking 1",
-      60,
+      46,
       schedule(ALL_DAYS, { start: "06:30", end: "20:00" }),
       [
         { id: "A", name: "North row", slotCount: 18, boundary: poly([2, 2], [18, 2], [18, 12], [12, 12], [12, 22], [2, 22]) },
-        { id: "B", name: "Center row", slotCount: 24, cameraIds: ["cam-p1-1"], boundary: poly([20, 2], [40, 2], [40, 10], [34, 22], [20, 22]) },
-        { id: "C", name: "East wing", slotCount: 18, cameraIds: ["cam-p1-2"], boundary: poly([43, 2], [56, 2], [56, 22], [40, 22]) },
+        { id: "B", name: "Center row", slotCount: 16, cameraIds: ["cam-p1-1"], boundary: poly([20, 2], [40, 2], [40, 10], [34, 22], [20, 22]), imagePolygon: onPhoto([20, 1215], [1610, 680], [1400, 610], [20, 930]) },
+        { id: "C", name: "East wing", slotCount: 12, cameraIds: ["cam-p1-2"], boundary: poly([43, 2], [56, 2], [56, 22], [40, 22]), imagePolygon: onPhoto([420, 1370], [1870, 900], [1720, 700], [90, 1010]) },
       ],
       [
-        { id: "cam-p1-1", name: "Gate cam", position: { x: 18, y: 24 }, headingDeg: 330, rangeMeters: 20 },
-        { id: "cam-p1-2", name: "Corner cam", position: { x: 53, y: 25 }, headingDeg: 245, rangeMeters: 18 },
+        { id: "cam-p1-1", name: "Gate cam", position: { x: 18, y: 24 }, headingDeg: 330, rangeMeters: 20, calibratedAt: CALIBRATED_AT },
+        { id: "cam-p1-2", name: "Corner cam", position: { x: 53, y: 25 }, headingDeg: 245, rangeMeters: 18, calibratedAt: CALIBRATED_AT },
       ],
     ),
     width: 58,
@@ -88,10 +103,10 @@ const PARKINGS: MockParking[] = [
       44,
       schedule(WEEKDAYS, { start: "06:00", end: "21:00" }),
       [
-        { id: "D", name: "Ramp side", slotCount: 20, cameraIds: ["cam-p2-1"], boundary: poly([2, 2], [24, 2], [24, 10], [14, 10], [14, 16], [2, 16]) },
+        { id: "D", name: "Ramp side", slotCount: 20, cameraIds: ["cam-p2-1"], boundary: poly([2, 2], [24, 2], [24, 10], [14, 10], [14, 16], [2, 16]), imagePolygon: onPhoto([170, 530], [1300, 1500], [2000, 1500], [2000, 1060], [240, 490]) },
         { id: "E", name: "Back wall", slotCount: 24, boundary: poly([26, 2], [46, 2], [46, 16], [26, 16]) },
       ],
-      [{ id: "cam-p2-1", name: "Ramp cam", position: { x: 18, y: 20 }, headingDeg: 275, rangeMeters: 20 }],
+      [{ id: "cam-p2-1", name: "Ramp cam", position: { x: 18, y: 20 }, headingDeg: 275, rangeMeters: 20, calibratedAt: CALIBRATED_AT }],
     ),
     width: 48,
     height: 18,
@@ -105,10 +120,10 @@ const PARKINGS: MockParking[] = [
     config: config(
       "p3",
       "Pizza",
-      18,
+      8,
       schedule(WEEKDAYS, { start: "07:00", end: "18:30" }),
-      [{ id: "F", name: "Front strip", slotCount: 18, cameraIds: ["cam-p3-1"], boundary: poly([2, 2], [22, 2], [22, 14], [8, 14], [2, 8]) }],
-      [{ id: "cam-p3-1", name: "Street cam", position: { x: 12, y: 18 }, headingDeg: 300, rangeMeters: 16 }],
+      [{ id: "F", name: "Front strip", slotCount: 8, cameraIds: ["cam-p3-1"], boundary: poly([2, 2], [22, 2], [22, 14], [8, 14], [2, 8]), imagePolygon: onPhoto([170, 848], [1790, 815], [1650, 720], [290, 735]) }],
+      [{ id: "cam-p3-1", name: "Street cam", position: { x: 12, y: 18 }, headingDeg: 300, rangeMeters: 16, calibratedAt: CALIBRATED_AT }],
     ),
     width: 24,
     height: 16,
@@ -121,26 +136,59 @@ const PARKINGS: MockParking[] = [
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
-export const mockParkings = (): ParkingLotConfig[] => PARKINGS.map((p) => p.config);
+const saved = globalThis as unknown as { __fmbsParkings?: Map<string, ParkingLotConfig | null> };
+
+/** What the admin saved, by parking id; null marks a deleted one. Lives until the dev server restarts. */
+const savedParkings = () => (saved.__fmbsParkings ??= new Map());
+
+export function mockParkings(): ParkingLotConfig[] {
+  const edits = savedParkings();
+  const seeded = PARKINGS.flatMap((p) => {
+    const edit = edits.get(p.config.id);
+    return edit === null ? [] : [edit ?? p.config];
+  });
+  const created = [...edits.values()].filter((c): c is ParkingLotConfig => c !== null && !PARKINGS.some((p) => p.config.id === c.id));
+  return [...seeded, ...created];
+}
+
+export const saveMockParking = (config: ParkingLotConfig) => void savedParkings().set(config.id, config);
+
+export const deleteMockParking = (id: string) => void savedParkings().set(id, null);
+
+const NEW_CAMERAS = [
+  { id: "cam-shelter-bus", name: "Roadside shelter, bus side" },
+  { id: "cam-shelter-entrance", name: "Roadside shelter, entrance side" },
+];
+
+export function mockDevices(): Device[] {
+  const seeded = PARKINGS.flatMap((p) => p.config.cameras);
+  return [...NEW_CAMERAS, ...seeded].map(({ id, name }) => ({ id, name, kind: "camera", snapshotUrl: SNAPSHOTS[id], lastSeen: new Date().toISOString() }));
+}
 
 export function mockHeatmap(id: string, now: number, debug: DebugState): ParkingHeatmap | null {
-  const parking = PARKINGS.find((p) => p.config.id === id);
-  if (!parking) return null;
+  const config = mockParkings().find((c) => c.id === id);
+  if (!config) return null;
+  const seed = PARKINGS.find((p) => p.config.id === id);
+  const regions = config.geometry.regions;
+  const boxes = regions.map((r) => boxOf(r.boundary));
+  // A parking created in the admin has no hand-tuned hotspots: one per sub-zone gives it the same movement.
+  const blobs: Blob[] = seed?.blobs ?? boxes.map((b, i) => ({ x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, s: Math.max(2, (b.maxX - b.minX) / 2), phase: i * 1.7 }));
 
   const clock: Clock = debug.clock ?? clockInZone(TIMEZONE, new Date(now));
   const base = occupancy(id, clock.day, clock.hour);
-  const regions = parking.config.geometry.regions;
-  const boxes = regions.map((r) => boxOf(r.boundary));
-
-  const cols = Math.round(parking.width / CELL);
-  const rows = Math.round(parking.height / CELL);
+  // The grid grows with the plan, since the admin can place a sub-zone anywhere.
+  const all = boxOf(regions.flatMap((r) => r.boundary));
+  const minX = Math.min(0, Math.floor(all.minX));
+  const minY = Math.min(0, Math.floor(all.minY));
+  const cols = Math.round((Math.max(seed?.width ?? 0, Math.ceil(all.maxX)) - minX) / CELL);
+  const rows = Math.round((Math.max(seed?.height ?? 0, Math.ceil(all.maxY)) - minY) / CELL);
   const probabilities: number[][] = [];
 
   for (let row = 0; row < rows; row++) {
     const line: number[] = [];
     for (let col = 0; col < cols; col++) {
-      const x = CELL / 2 + col * CELL;
-      const y = CELL / 2 + row * CELL;
+      const x = minX + CELL / 2 + col * CELL;
+      const y = minY + CELL / 2 + row * CELL;
       const idx = regions.findIndex(
         (r, i) =>
           x >= boxes[i].minX && x <= boxes[i].maxX && y >= boxes[i].minY && y <= boxes[i].maxY && pointInPolygon({ x, y }, r.boundary),
@@ -149,13 +197,13 @@ export function mockHeatmap(id: string, now: number, debug: DebugState): Parking
         line.push(0);
         continue;
       }
-      const forced: ForcedState = debug.zones[`${parking.config.id}:${regionKey(regions[idx], idx)}`] ?? "normal";
+      const forced: ForcedState = debug.zones[`${id}:${regionKey(regions[idx], idx)}`] ?? "normal";
       let p: number;
       if (forced === "full") p = 0.03;
       else if (forced === "empty") p = 0.97;
       else {
         let g = 0;
-        for (const b of parking.blobs) {
+        for (const b of blobs) {
           const w = 0.65 + 0.35 * Math.sin(now / 45000 + b.phase);
           g += w * Math.exp(-((x - b.x) ** 2 + (y - b.y) ** 2) / (2 * b.s * b.s));
         }
@@ -169,8 +217,8 @@ export function mockHeatmap(id: string, now: number, debug: DebugState): Parking
 
   return {
     version: 1,
-    geometry: parking.config.geometry,
-    heatmap: { origin: { x: CELL / 2, y: CELL / 2 }, cellSizeMeters: CELL, probabilities },
+    geometry: config.geometry,
+    heatmap: { origin: { x: minX + CELL / 2, y: minY + CELL / 2 }, cellSizeMeters: CELL, probabilities },
   };
 }
 

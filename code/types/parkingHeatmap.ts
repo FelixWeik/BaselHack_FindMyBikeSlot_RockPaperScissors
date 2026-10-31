@@ -14,6 +14,8 @@ export interface ParkingRegion {
   slotCount?: number;
   /** Ordered polygon path for one usable parking area. */
   boundary: Point[];
+  /** The same area as seen by the calibrating camera, in image coordinates normalized to 0..1. */
+  imagePolygon?: Point[];
 }
 
 export interface ParkingGeometry {

@@ -13,6 +13,8 @@ export interface ParkingRegion {
   slotCount?: number;
   /** Ordered polygon path for one usable parking area. */
   boundary: Point[];
+  /** The same area as seen by the calibrating camera, in image coordinates normalized to 0..1. */
+  imagePolygon?: Point[];
 }
 
 export interface ParkingGeometry {
@@ -38,9 +40,23 @@ export interface ParkingLotGeometry {
 export interface ParkingCamera {
   id: string;
   name: string;
-  position: Point;
-  headingDeg: number;
-  rangeMeters: number;
+  /** Optional: a camera is calibrated from its own view, not placed on the plan. */
+  position?: Point;
+  headingDeg?: number;
+  rangeMeters?: number;
+  /** ISO 8601 time of the last calibration. */
+  calibratedAt?: string;
+}
+
+/** Hardware reporting to the backend. It is "assigned" once a parking lists it in `cameras`. */
+export interface Device {
+  id: string;
+  kind: "camera" | "lidar";
+  name: string;
+  /** Where to get a view to calibrate on; without one the admin provides a photo. */
+  snapshotUrl?: string;
+  /** ISO 8601 time of the last observation. */
+  lastSeen?: string;
 }
 
 export interface SlotSize {

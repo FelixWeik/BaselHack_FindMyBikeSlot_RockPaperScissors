@@ -5,14 +5,14 @@ import { usePathname } from "next/navigation";
 import { ForecastIcon, MapIcon, ParkingsIcon, SettingsIcon } from "@/components/ui/Icons";
 
 const TABS = [
-  { href: "/map", label: "Map", Icon: MapIcon },
-  { href: "/forecast", label: "Forecast", Icon: ForecastIcon },
   { href: "/", label: "Parkings", Icon: ParkingsIcon },
+  { href: "/forecast", label: "Forecast", Icon: ForecastIcon },
+  { href: "/map", label: "Map", Icon: MapIcon },
   { href: "/settings", label: "Settings", Icon: SettingsIcon },
 ];
 
 // Secondary pages keep their parent tab lit.
-const PARENT: Record<string, string> = { "/admin": "/settings", "/privacy": "/settings", "/debug": "/settings" };
+const PARENT: Record<string, string> = { "/admin": "/settings", "/admin/setup": "/settings", "/privacy": "/settings", "/debug": "/settings" };
 
 export function AppNav() {
   const pathname = usePathname();

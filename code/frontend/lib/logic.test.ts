@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { analyze, bestRegion, overallChance } from "./geometry";
+import { type AdminParking, type AdminRegion, newParking, rectangle } from "./adminModel";
+import { applyCalibration, type CalibrationDraft, drawingIssues, type DraftSubZone, placeSubZones, polygonsOverlap, selfCrosses, startDraft } from "./calibration";
+import { analyze, bestRegion, boxOf, overallChance } from "./geometry";
 import { chanceAt, freesUpAt, tightFrom } from "./forecast";
 import { recommend, trendOf, type Sample } from "./recommend";
 import { clockInZone, isOpenAt, openState } from "./schedule";
@@ -152,5 +154,83 @@ describe("forecast", () => {
     expect(from).not.toBeNull();
     expect(freesUpAt("p1", 1)!).toBeGreaterThan(from!);
     expect(tightFrom("p1", 6)).toBeNull();
+  });
+});
+
+describe("admin calibration", () => {
+  const rect = (x: number, y: number, w: number, h: number) => rectangle(x, y, w, h);
+  const quad = [
+    { x: 0.1, y: 0.1 },
+    { x: 0.4, y: 0.1 },
+    { x: 0.4, y: 0.4 },
+    { x: 0.1, y: 0.5 },
+  ];
+  const parking = (regions: AdminRegion[] = [], cameras: AdminParking["cameras"] = []): AdminParking => ({ ...newParking("Parking 1", new Set()), geometry: { regions }, cameras });
+  const zone = (id: string, boundary = rect(0, 0, 4, 2)): DraftSubZone => ({ id, name: id, capacity: 3, imagePolygon: quad, boundary });
+  const draft = (subZones: DraftSubZone[]): CalibrationDraft => ({ camera: { id: "cam", name: "Cam" }, subZones, target: { kind: "existing", parkingId: "p" } });
+
+  test("a bow-tie crosses itself, a skewed quad does not", () => {
+    expect(selfCrosses(quad)).toBe(false);
+    expect(selfCrosses([{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 1, y: 0 }, { x: 0, y: 1 }])).toBe(true);
+  });
+
+  test("neighbours sharing an edge don't overlap; crossing, nested and identical shapes do", () => {
+    expect(polygonsOverlap(rect(0, 0, 2, 2), rect(2, 0, 2, 2))).toBe(false);
+    expect(polygonsOverlap(rect(0, 0, 2, 2), rect(5, 5, 2, 2))).toBe(false);
+    expect(polygonsOverlap(rect(0, 0, 2, 2), rect(1, 1, 2, 2))).toBe(true);
+    expect(polygonsOverlap(rect(0, 0, 6, 6), rect(2, 2, 1, 1))).toBe(true);
+    expect(polygonsOverlap(rect(0, 0, 2, 2), rect(0, 0, 2, 2))).toBe(true);
+  });
+
+  test("the drawing step needs a named, drawn sub-zone with a capacity", () => {
+    expect(drawingIssues([])).toHaveLength(1);
+    expect(drawingIssues([{ ...zone("a"), capacity: 0 }])[0]).toContain("capacity");
+    expect(drawingIssues([{ ...zone("a"), imagePolygon: [] }])[0]).toContain("isn't drawn");
+    expect(drawingIssues([zone("a")])).toEqual([]);
+  });
+
+  test("blocks are placed at real size without touching what's on the plan", () => {
+    const existing: AdminRegion = { id: "old", boundary: rect(0, 0, 10, 10) };
+    const placed = placeSubZones([{ ...zone("a", []), capacity: 10 }, zone("b", [])], parking([existing]));
+    expect(boxOf(placed[0].boundary)).toEqual({ minX: 0, minY: 12, maxX: 7, maxY: 14 });
+    for (const block of placed) expect(polygonsOverlap(block.boundary, existing.boundary)).toBe(false);
+    expect(polygonsOverlap(placed[0].boundary, placed[1].boundary)).toBe(false);
+  });
+
+  test("a block already placed stays where it is", () => {
+    const here = rect(3, 3, 2, 2);
+    expect(placeSubZones([zone("a", here)], parking())[0].boundary).toEqual(here);
+  });
+
+  test("a new camera adds its sub-zones and adds up the capacity", () => {
+    const other: AdminRegion = { id: "other", slotCount: 5, boundary: rect(0, 0, 2, 2), cameraIds: ["cam-2"] };
+    const result = applyCalibration(parking([other]), draft([zone("a"), zone("b")]), "2026-10-31T10:00:00Z");
+    expect(result.geometry.regions.map((r) => r.id)).toEqual(["other", "A", "B"]);
+    expect(result.totalSlots).toBe(11);
+    expect(result.geometry.regions[1].cameraIds).toEqual(["cam"]);
+    expect(result.cameras).toEqual([{ id: "cam", name: "Cam", calibratedAt: "2026-10-31T10:00:00Z" }]);
+  });
+
+  test("recalibrating replaces only that camera's sub-zones, in place", () => {
+    const mine = (id: string): AdminRegion => ({ id, slotCount: 1, boundary: rect(0, 0, 2, 2), cameraIds: ["cam"] });
+    const other: AdminRegion = { id: "other", slotCount: 5, boundary: rect(9, 0, 2, 2), cameraIds: ["cam-2"] };
+    const start = parking([mine("keep"), other, mine("gone")], [{ id: "cam", name: "Renamed by admin" }]);
+    const result = applyCalibration(start, draft([{ ...zone("keep"), capacity: 7 }]), "2026-10-31T10:00:00Z");
+    expect(result.geometry.regions.map((r) => r.id)).toEqual(["keep", "other"]);
+    expect(result.totalSlots).toBe(12);
+    expect(result.cameras).toEqual([{ id: "cam", name: "Renamed by admin", calibratedAt: "2026-10-31T10:00:00Z" }]);
+  });
+
+  test("recalibrating starts from what the camera already has", () => {
+    const region: AdminRegion = { id: "r", name: "Row", slotCount: 4, boundary: rect(0, 0, 2, 2), cameraIds: ["cam"] };
+    const started = startDraft({ id: "cam", name: "Cam" }, [{ ...parking([region], [{ id: "cam", name: "Cam" }]), id: "home" }]);
+    expect(started.target).toEqual({ kind: "existing", parkingId: "home" });
+    expect(started.subZones).toEqual([{ id: "r", name: "Row", capacity: 4, imagePolygon: [], boundary: region.boundary }]);
+    expect(drawingIssues(started.subZones)[0]).toContain("isn't drawn");
+  });
+
+  test("a new zone gets a clean, unique id", () => {
+    expect(newParking("Vélo Nord !", new Set()).id).toBe("velo-nord");
+    expect(newParking("Parking", new Set(["parking"])).id).not.toBe("parking");
   });
 });

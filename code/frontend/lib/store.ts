@@ -164,6 +164,16 @@ export function refresh(): Promise<void> {
   return inflight;
 }
 
+/** Parkings changed on the server: refetch them, after any request that started before the change. */
+export function reloadConfigs() {
+  configsAt = 0;
+  if (!started) return;
+  void (inflight ?? Promise.resolve()).then(() => {
+    configsAt = 0;
+    return refresh();
+  });
+}
+
 function start() {
   if (started) return;
   started = true;

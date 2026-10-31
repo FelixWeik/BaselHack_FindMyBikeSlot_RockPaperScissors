@@ -8,12 +8,12 @@ import logging
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import Store
 from .heatmap import build_heatmap
-from .models import Observation
+from .models import Observation, ParkingLotConfig
 from .parkings import load_parkings
 
 log = logging.getLogger("uvicorn.error")
@@ -35,8 +35,13 @@ def create_app(
     log.info("Loaded parkings: %s", sorted(parkings))
 
     app = FastAPI(title="Find my Bike Slot - Backend", version="0.2.0")
-    # Read-only public data; the web app may be served from another origin or a phone on the LAN.
-    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"])
+    # The web app may be served from another origin or a phone on the LAN. CORS_ORIGINS is a comma-separated list.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
+        allow_methods=["GET", "PUT", "DELETE"],
+        allow_headers=["Content-Type"],
+    )
 
     @app.get("/healthz")
     def healthz() -> dict:
@@ -68,6 +73,30 @@ def create_app(
         if parking is None:
             raise HTTPException(404, "unknown parking")
         return build_heatmap(parking, store.current_slot_states(stale_after_s))
+
+    @app.get("/api/v1/devices")
+    def devices() -> list[dict]:
+        """Devices seen so far. The client compares them with the parkings' cameras to find the unassigned ones."""
+        return store.devices()
+
+    @app.get("/api/v1/parkings")
+    def admin_parkings() -> list[dict]:
+        """The zones set up in the admin, with their sub-zones and calibration."""
+        return store.parkings()
+
+    @app.put("/api/v1/parkings/{parking_id}")
+    def put_parking(parking_id: str, parking: ParkingLotConfig) -> dict:
+        """Create or replace a zone."""
+        if parking.id != parking_id:
+            raise HTTPException(status_code=422, detail="The id in the path and in the body differ")
+        store.save_parking(parking)
+        return parking.model_dump(mode="json", exclude_none=True)
+
+    @app.delete("/api/v1/parkings/{parking_id}", status_code=204)
+    def delete_parking(parking_id: str) -> Response:
+        if not store.delete_parking(parking_id):
+            raise HTTPException(status_code=404, detail="Unknown parking")
+        return Response(status_code=204)
 
     return app
 

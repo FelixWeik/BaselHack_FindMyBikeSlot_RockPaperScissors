@@ -9,7 +9,7 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .models import Observation
+from .models import Observation, ParkingLotConfig
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS observations (
@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS observations (
     slots_json  TEXT NOT NULL    -- [{"slot_id": "s1", "state": "free", "conf": 0.9}, ...]
 );
 CREATE INDEX IF NOT EXISTS idx_obs_device ON observations (device_id, id);
+CREATE TABLE IF NOT EXISTS parkings (
+    id          TEXT PRIMARY KEY,
+    updated_at  TEXT NOT NULL,   -- when the admin last saved it (UTC)
+    config_json TEXT NOT NULL    -- one ParkingLotConfig (zones, sub-zones, calibration)
+);
 """
 
 
@@ -84,3 +89,36 @@ class Store:
             for slot in obs["slots"]:
                 states[(obs["device_id"], slot["slot_id"])] = slot["state"]
         return states
+
+    def parkings(self) -> list[dict]:
+        """Every saved parking, in the order they were created."""
+        with self._lock:
+            rows = self._conn.execute("SELECT config_json FROM parkings ORDER BY rowid").fetchall()
+        return [json.loads(r["config_json"]) for r in rows]
+
+    def save_parking(self, parking: ParkingLotConfig) -> None:
+        config = parking.model_dump_json(exclude_none=True)
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO parkings (id, updated_at, config_json) VALUES (?, ?, ?)
+                   ON CONFLICT (id) DO UPDATE
+                   SET updated_at = excluded.updated_at, config_json = excluded.config_json""",
+                (parking.id, utc_iso(datetime.now(UTC)), config),
+            )
+            self._conn.commit()
+
+    def delete_parking(self, parking_id: str) -> bool:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM parkings WHERE id = ?", (parking_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def devices(self) -> list[dict]:
+        """Every device that ever reported an observation, with the time of its latest one."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT device_id, MAX(ts) AS last_seen FROM observations GROUP BY device_id ORDER BY device_id"
+            ).fetchall()
+        return [
+            {"id": r["device_id"], "name": r["device_id"], "kind": "camera", "lastSeen": r["last_seen"]} for r in rows
+        ]

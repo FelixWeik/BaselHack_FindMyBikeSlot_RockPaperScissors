@@ -12,7 +12,8 @@ const STEPS = [
 ];
 
 const PROMISES = [
-  "This app never receives or displays a camera image.",
+  "The app never shows you a camera image, and its servers never receive one.",
+  "Only an admin calibrating a camera sees a view of the parking. A photo they pick stays in their browser and is not uploaded.",
   "No account: the app doesn't know who you are.",
   "No analytics or tracking in the app. Your favorites and settings stay on your device.",
 ];

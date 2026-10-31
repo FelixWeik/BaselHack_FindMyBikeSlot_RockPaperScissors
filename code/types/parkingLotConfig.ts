@@ -3,9 +3,23 @@ import type { ParkingHeatmap, ParkingRegion } from './parkingHeatmap';
 export interface ParkingCamera {
   id: string;
   name: string;
-  position: { x: number; y: number };
-  headingDeg: number;
-  rangeMeters: number;
+  /** Optional: a camera is calibrated from its own view, not placed on the plan. */
+  position?: { x: number; y: number };
+  headingDeg?: number;
+  rangeMeters?: number;
+  /** ISO 8601 time of the last calibration. */
+  calibratedAt?: string;
+}
+
+/** Hardware reporting to the backend. It is "assigned" once a parking lists it in `cameras`. */
+export interface Device {
+  id: string;
+  kind: 'camera' | 'lidar';
+  name: string;
+  /** Where to get a view to calibrate on; without one the admin provides a photo. */
+  snapshotUrl?: string;
+  /** ISO 8601 time of the last observation. */
+  lastSeen?: string;
 }
 
 export interface ParkingLotGeometry {
