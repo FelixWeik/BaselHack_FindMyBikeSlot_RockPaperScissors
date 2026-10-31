@@ -77,10 +77,6 @@ cd code/frontend
 bun install
 MOCK_MODE=false NEXT_PUBLIC_API_URL=http://localhost:8000 bun run dev
 
-# No camera at hand? This one plays recorded scenes, then calibrate it in the admin
-cd code/vision
-uv run python demo/demo_camera.py
-
 # Camera node: see code/firmware/README.md
 cd code/firmware
 cp include/secrets.h.example include/secrets.h   # WiFi credentials

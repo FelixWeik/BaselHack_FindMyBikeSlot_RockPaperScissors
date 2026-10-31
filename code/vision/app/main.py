@@ -2,7 +2,8 @@
 
 Receives JPEG frames from camera nodes, detects bikes and reports their boxes to the backend, which knows the zones.
 Frames live in memory only until they are analysed, unless RECORD_DIR is set for training data capture. The only
-image that ever leaves this service is a calibration capture, and only with its faces masked.
+image that ever leaves this service is a calibration capture, and only with its faces masked. The presenter view
+(off unless DEMO_VIEW=1) shows the latest frame of each camera, masked the same way.
 
 Run (from code/vision):  uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8001
 """
@@ -14,15 +15,17 @@ import re
 from collections.abc import AsyncIterator
 from concurrent.futures import Future
 from contextlib import asynccontextmanager
+from pathlib import Path
 from threading import Lock
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from .anonymizer import Anonymizer, DefaceAnonymizer
 from .config import Settings
+from .demo_view import DemoView
 from .detector import Detector, YoloDetector
 from .recorder import Recorder
 from .worker import FrameWorker, Pending, SendObservation
@@ -61,8 +64,9 @@ def create_app(
     detector = detector or YoloDetector(
         settings.model_path, settings.bike_classes, settings.min_confidence, settings.imgsz, settings.dark_below
     )
-    worker = FrameWorker(detector, send_observation or http_sender(settings.backend_url))
     anonymizer = anonymizer or DefaceAnonymizer()
+    demo = DemoView(anonymizer) if settings.demo_view else None
+    worker = FrameWorker(detector, send_observation or http_sender(settings.backend_url), demo.update if demo else None)
     recorder = Recorder(settings.record_dir, settings.record_every_s)
 
     # Calibration captures waiting for a camera's next frame. Nothing keeps a frame around for them.
@@ -73,6 +77,8 @@ def create_app(
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if recorder.enabled:
             log.warning("Recording training frames to %s", settings.record_dir)
+        if demo:
+            log.warning("Presenter view enabled at /demo: the latest masked frame of each camera can be viewed")
         if hasattr(detector, "warmup"):
             detector.warmup()
         worker.start()
@@ -134,4 +140,28 @@ def create_app(
             del jpeg
         return Response(masked, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
+    if demo:
+
+        @app.get("/demo", response_class=HTMLResponse)
+        def demo_page() -> str:
+            return DEMO_PAGE
+
+        @app.get("/demo/cameras")
+        def demo_cameras() -> list[dict]:
+            return demo.cameras()
+
+        @app.get("/demo/cameras/{device_id}/frame.jpg")
+        async def demo_frame(device_id: str) -> Response:
+            try:
+                jpeg = await run_in_threadpool(demo.render, device_id)
+            except Exception as err:
+                log.error("Presenter view failed for %s: %s", device_id, type(err).__name__)
+                raise HTTPException(503, "The frame could not be anonymized, so it was not sent") from None
+            if jpeg is None:
+                raise HTTPException(404, "No frame from this camera yet")
+            return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
     return app
+
+
+DEMO_PAGE = (Path(__file__).parent / "demo_view.html").read_text()
