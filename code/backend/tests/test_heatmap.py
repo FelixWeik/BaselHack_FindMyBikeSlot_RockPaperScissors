@@ -119,6 +119,23 @@ def test_parkings_endpoint_uses_camel_case(client):
     assert configs[0]["totalSlots"] == 2 and configs[0]["slotSize"]["widthMeters"] == 0.7
 
 
+def test_admin_fields_round_trip():
+    raw = parking()
+    raw["config"]["geometry"]["regions"][0] |= {"name": "North", "cameraIds": ["cam"], "slotCount": 2}
+    raw["config"]["cameras"] = [
+        {"id": "cam", "name": "Cam", "position": {"x": 2, "y": 3}, "headingDeg": 270, "rangeMeters": 4}
+    ]
+    p = Parking.model_validate(raw)
+    config = p.config.model_dump(by_alias=True, exclude_none=True)
+    assert config["cameras"][0]["headingDeg"] == 270
+    region = build_heatmap(p, {})["geometry"]["regions"][0]
+    assert region["name"] == "North" and region["cameraIds"] == ["cam"] and region["slotCount"] == 2
+
+
+def test_parkings_endpoint_always_lists_cameras(client):
+    assert client.get("/api/parkings").json()[0]["cameras"] == []
+
+
 def test_heatmap_endpoint_reflects_latest_observation(client):
     observe(client, "free", "free")
     assert set(region_cells(client.get("/api/parkings/p1/heatmap").json(), 0, 4)) == {1.0}

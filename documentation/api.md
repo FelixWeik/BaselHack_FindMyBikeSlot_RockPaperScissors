@@ -92,6 +92,10 @@ camera slot lies on it.
 }
 ```
 
+`config` follows `ParkingLotConfig` exactly, including the fields the admin panel edits:
+`cameras` (`id`, `name`, `position`, `headingDeg`, `rangeMeters`; always present, may be empty) and the
+optional region fields `name`, `cameraIds` and `slotCount`.
+
 `deviceId` + `slotId` link a slot drawn in the vision calibration page to its position on the site plan.
 Region polygons can be drawn with the admin zone editor of the web app (exported as JSON).
 The backend validates all files at startup and refuses to start with a broken configuration.

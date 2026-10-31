@@ -25,7 +25,20 @@ class Point(CamelModel):
 
 class ParkingRegion(CamelModel):
     id: str | None = None
+    name: str | None = None
+    camera_ids: list[str] | None = None
+    slot_count: int | None = Field(default=None, ge=0)
     boundary: list[Point] = Field(min_length=3)
+
+
+class ParkingCamera(CamelModel):
+    """A camera's place on the site plan (used by the admin panel to draw its field of view)."""
+
+    id: str
+    name: str
+    position: Point
+    heading_deg: float
+    range_meters: float = Field(gt=0)
 
 
 class Geometry(CamelModel):
@@ -62,6 +75,7 @@ class ParkingLotConfig(CamelModel):
     geometry: Geometry
     slot_size: SlotSize
     schedule: Schedule
+    cameras: list[ParkingCamera] = Field(default_factory=list)
 
 
 class SlotPlacement(CamelModel):
