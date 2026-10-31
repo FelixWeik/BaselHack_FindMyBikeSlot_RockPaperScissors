@@ -1,122 +1,124 @@
-# Kamera-Firmware – Find my Bike Slot
+# Camera node firmware
 
-Die Kamera macht alle 2 Sekunden ein Foto und schickt es per WLAN an den Auswerte-Rechner.
-Auf der Kamera wird nichts gespeichert – das Foto liegt nur kurz im Kamera-Puffer.
+Each camera node captures a JPEG every 2 seconds and sends it over WiFi to the vision service.
+Nothing is stored on the device: a frame only lives in the camera frame buffer until it is sent.
 
 ```
- Kamera (dieses Projekt) ──JPEG, HTTP POST──▶ Auswerte-Rechner :8001/api/v1/frames
+Camera node (this project) ──JPEG, HTTP POST──▶ vision service :8001/api/v1/frames
 ```
 
 ## Hardware
 
-- **Seeed XIAO ESP32S3 Sense** (mit aufgestecktem Kamera-Aufsatz, Sensor OV3660)
-- **Externe WLAN-Antenne – Pflicht!** Ohne Antenne ist das Signal so schwach (≈ −90 dBm), dass keine
-  Verbindung zustande kommt. Stecker: winziger runder Goldknopf (U.FL) auf der Seite mit der
-  Metallkappe, Ecke gegenüber vom USB-C. Gerade aufdrücken, bis es klickt.
-- USB-C-Kabel (Daten, nicht nur Laden) bzw. später USB-Netzteil / Powerbank
+- **Seeed XIAO ESP32S3 Sense** with the camera module attached (OV3660 sensor)
+- **External WiFi antenna (required).** Without it the signal is around −90 dBm and the board cannot
+  connect. Plug it into the small U.FL connector on the shielded side, opposite the USB-C port.
+- USB-C data cable for flashing, USB power supply or power bank in the field
 
-## Einrichten (einmalig)
+## Setup
 
 ```bash
-# 1. PlatformIO installieren (falls nicht vorhanden)
-uv tool install platformio          # oder: pip install platformio
+# 1. Install PlatformIO
+uv tool install platformio          # or: pip install platformio
 
-# 2. Linux: Recht für den USB-Port
-sudo usermod -aG dialout $USER      # danach neu anmelden – oder pro Terminal: newgrp dialout
+# 2. Linux only: serial port access
+sudo usermod -aG dialout $USER      # log out and back in, or run: newgrp dialout
 
-# 3. Zugangsdaten anlegen (diese Datei ist in .gitignore und landet NIE auf GitHub)
+# 3. Credentials (git-ignored)
 cp include/secrets.h.example include/secrets.h
-#    → WLAN-Name, WLAN-Passwort und ein OTA-Passwort eintragen
+#    then set WiFi SSID, WiFi password and an OTA password
 ```
 
-In `include/config.h` prüfen: `DEVICE_ID` (pro Kamera eindeutig!) und `VISION_FALLBACK_IP`
-(IP des Auswerte-Rechners, `ip -4 addr` auf dem Rechner).
+Check `include/config.h`: `DEVICE_ID` must be unique per camera, and `VISION_FALLBACK_IP` should be
+the IP of the machine running the vision service (`ip -4 addr`).
 
-## Flashen und zuschauen
+## Build, flash, monitor
 
-Alle `pio`-Befehle **in diesem Ordner** (`code/firmware/`) ausführen – dort liegt `platformio.ini`.
+Run all `pio` commands from `code/firmware/`.
 
 ```bash
-pio run -t upload        # per USB aufs Board laden
-pio device monitor       # Ausgabe ansehen (Strg+C beendet)
+pio run -t upload                   # flash over USB
+pio device monitor                  # serial log (Ctrl+C to quit)
 
-pio run -e xiao_s3_ota -t upload   # Update über WLAN (Kamera muss im selben Netz sein,
-                                   # upload_port in platformio.ini = IP der Kamera)
+pio run -e xiao_s3_ota -t upload    # flash over WiFi; set upload_port in platformio.ini to the camera IP
 ```
 
-Erwartete Ausgabe:
+Expected log:
 
 ```
-=== Kamera 'cam-memox-nord' startet (letzter Start: Strom eingeschaltet) ===
-Kamera bereit: Sensor-ID 0x3660 ...
-WLAN verbunden! IP 192.168.21.63, Router 192.168.20.1, Signal -52 dBm
-OTA bereit: ...
-Foto: 13051 Bytes -> HTTP 200 (82 ms) | WLAN -55 dBm | Fehler in Folge: 0
+=== Camera 'cam-memox-nord' booting (reset reason: power on) ===
+Camera ready: sensor PID 0x3660 ...
+WiFi connected: IP 192.168.21.63, gateway 192.168.20.1, RSSI -52 dBm
+OTA ready: ...
+Frame: 13051 bytes -> HTTP 200 (82 ms) | RSSI -55 dBm | consecutive failures: 0
 ```
 
-## Testen ohne echten Server
+## Testing without the vision service
 
-Ein Mini-Empfänger (nur Python-Standardbibliothek) nimmt die Fotos an und zeigt das jeweils letzte
-im Browser – **nur im Arbeitsspeicher**, nichts wird gespeichert:
+A minimal receiver (Python standard library only) accepts frames and shows the latest one per camera
+in the browser. Frames are kept in memory only.
 
 ```bash
 python3 tools/test_receiver.py
-# Vorschau: http://localhost:8001/
+# preview: http://localhost:8001/
 ```
 
-## Was die LED bedeutet
+## LED states
 
-| LED | Bedeutung |
+| LED | Meaning |
 |---|---|
-| kurzes Blitzen alle 2 s | alles gut, Foto angekommen |
-| schnelles Blinken | sucht WLAN |
-| Dauerlicht | letzter Versuch fehlgeschlagen (Server aus? falsche IP?) |
+| short flash every 2 s | frame delivered |
+| fast blinking | connecting to WiFi |
+| steady on | last attempt failed (vision service down? wrong IP?) |
 
-## Was die Kamera selbst repariert
+## Self-recovery
 
-| Problem | Reaktion |
+The node is designed to run unattended for days.
+
+| Problem | Reaction |
 |---|---|
-| Programm hängt 30 s | Watchdog startet neu |
-| 10 Fotos hintereinander nicht angekommen | Neustart |
-| WLAN weg | verbindet neu; nach 60 s ohne WLAN Neustart |
-| Kamera startet nicht | nach 10 s Neustart |
+| main loop hangs for 30 s | watchdog restart |
+| 10 consecutive failed captures/uploads | restart |
+| WiFi lost | reconnect; restart after 60 s without WiFi |
+| camera init fails | restart after 10 s |
 
-Beim Start steht im Log, **warum** zuletzt neu gestartet wurde (z. B. „Watchdog“ oder
-„Spannung zu niedrig“ → besseres Netzteil/Kabel).
+The reset reason is logged at boot (e.g. `watchdog` or `brownout` → use a stronger power supply/cable).
 
-## Schnittstelle zum Auswerte-Rechner
+OTA updates are password-protected. A wrong password is only logged and never causes a restart, so
+nobody on the network can reboot a camera.
+
+## Interface
 
 ```
-POST http://<rechner>:8001/api/v1/frames
+POST http://<vision-host>:8001/api/v1/frames
 Content-Type: image/jpeg
-X-Device-Id: cam-memox-nord      Name der Kamera (config.h)
-X-RSSI: -55                      WLAN-Signal in dBm
-X-Uptime-S: 1234                 Sekunden seit Start
+X-Device-Id: cam-memox-nord      camera name (config.h)
+X-RSSI: -55                      WiFi signal in dBm
+X-Uptime-S: 1234                 seconds since boot
 Body: JPEG, 640x480
 ```
 
-Antwort `200` = angekommen. Alles andere zählt als Fehler.
+`200` means delivered; any other response counts as a failure. See [`documentation/api.md`](../../documentation/api.md).
 
-## Einstellungen (`include/config.h`)
+## Configuration (`include/config.h`)
 
-| Einstellung | Standard | Wofür |
+| Setting | Default | Purpose |
 |---|---|---|
-| `DEVICE_ID` | `cam-memox-nord` | Name der Kamera, pro Kamera eindeutig |
-| `VISION_HOSTNAME` / `VISION_FALLBACK_IP` | `tempestD` / `192.168.22.2` | Ziel-Rechner: erst per Name (`.local`), sonst feste IP |
-| `FRAME_SIZE` | `FRAMESIZE_VGA` (640×480) | Auflösung |
-| `JPEG_QUALITY` | `10` | 0..63, kleiner = schärfer, größer |
-| `CAMERA_VFLIP` / `CAMERA_HMIRROR` | `1` / `0` | Bild drehen / spiegeln je nach Montage |
-| `CAPTURE_INTERVAL_MS` | `2000` | Abstand zwischen Fotos |
+| `DEVICE_ID` | `cam-memox-nord` | camera name, unique per camera |
+| `VISION_HOSTNAME` / `VISION_FALLBACK_IP` | `tempestD` / `192.168.22.2` | target host: mDNS (`.local`) first, then static IP |
+| `FRAME_SIZE` | `FRAMESIZE_VGA` (640×480) | resolution |
+| `JPEG_QUALITY` | `10` | 0..63, lower = sharper but larger |
+| `CAMERA_VFLIP` / `CAMERA_HMIRROR` | `1` / `0` | flip/mirror depending on mounting |
+| `CAPTURE_INTERVAL_MS` | `2000` | time between frames |
 
-## Fehlersuche
+## Troubleshooting
 
-| Meldung / Symptom | Ursache | Lösung |
+| Message / symptom | Cause | Fix |
 |---|---|---|
-| `Not a PlatformIO project` | im falschen Ordner | `cd code/firmware` |
-| `Could not open /dev/ttyACM0` | kein Recht auf USB-Port | `newgrp dialout` (siehe Einrichten) |
-| Upload hängt | Board nicht im Flash-Modus | BOOT halten, RESET drücken, BOOT loslassen, nochmal hochladen |
-| `Netz nicht gefunden` / Signal < −85 dBm | Antenne fehlt | Antenne aufstecken |
-| `Verbindung abgelehnt (Passwort?)` | falsches WLAN-Passwort | gespeichertes Passwort am Laptop anzeigen: `nmcli -s -g 802-11-wireless-security.psk connection show <WLAN>` |
-| `HTTP -1` | Server nicht erreichbar | Server läuft? IP in `config.h` aktuell? Die ersten 1–2 Fehler nach dem Start sind normal |
-| `Kamera-Start fehlgeschlagen` | Aufsatz sitzt nicht | USB ab, Kamera-Aufsatz fest aufdrücken |
-| WLAN-Name/Passwort ohne „Login-Seite“ | ESP32 kann keine Login-Portale (z. B. Eduroam) | anderes WLAN oder Handy-Hotspot (2,4 GHz!) |
+| `Not a PlatformIO project` | wrong directory | `cd code/firmware` |
+| `Could not open /dev/ttyACM0` | no serial port permission | `newgrp dialout` (see Setup) |
+| upload hangs | board not in download mode | hold BOOT, press RESET, release BOOT, upload again |
+| `network not found` / RSSI below −85 dBm | antenna missing | attach the antenna |
+| `connection rejected (wrong password?)` | wrong WiFi password | show the saved password: `nmcli -s -g 802-11-wireless-security.psk connection show <ssid>` |
+| `HTTP -1` | vision service unreachable | is it running? is the IP in `config.h` current? 1–2 failures right after boot are normal |
+| `Camera init failed` | camera module not seated | unplug USB, press the camera module firmly into place |
+| network needs a login page | ESP32 cannot handle captive portals (e.g. eduroam) | use another network or a 2.4 GHz phone hotspot |

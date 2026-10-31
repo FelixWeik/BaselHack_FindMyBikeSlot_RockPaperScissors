@@ -1,14 +1,12 @@
-"""Mini-Empfänger zum Testen der Kamera-Firmware.
+"""Minimal receiver for testing the camera firmware without the vision service.
 
-Nimmt Fotos auf POST /api/v1/frames an (Port 8001, wie später der Vision-Service)
-und gibt Metadaten aus. Vorschau im Browser: http://localhost:8001/
+Accepts frames on POST /api/v1/frames (port 8001, same contract as the vision service)
+and logs their metadata. Live preview: http://localhost:8001/
 
-Privacy: Pro Kamera wird nur das LETZTE Foto im Arbeitsspeicher gehalten (für die Vorschau)
-und beim nächsten Foto überschrieben. Nichts wird auf die Festplatte geschrieben.
-Strg+C beendet das Programm, dann ist auch das letzte Foto weg.
+Privacy: only the latest frame per camera is kept in memory for the preview and is
+overwritten by the next one. Nothing is written to disk.
 
-Start:  python3 code/firmware/tools/test_receiver.py
-Nur Python-Standardbibliothek, keine Installation nötig.
+Run:  python3 code/firmware/tools/test_receiver.py   (standard library only)
 """
 
 import html
@@ -21,14 +19,14 @@ from urllib.parse import parse_qs, urlparse
 PORT = 8001
 MAX_BYTES = 2 * 1024 * 1024
 
-# Letztes Foto + Infos pro Kamera – nur im RAM.
+# Latest frame + metadata per camera, in memory only.
 latest: dict[str, dict] = {}
 lock = threading.Lock()
 
 PAGE = """<!doctype html>
-<html lang="de"><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kamera-Vorschau</title>
+<title>Camera preview</title>
 <style>
   body {{ font-family: system-ui, sans-serif; margin: 16px; background: #f4f5f7; color: #222; }}
   h1 {{ font-size: 1.2rem; }}
@@ -39,7 +37,7 @@ PAGE = """<!doctype html>
   .old {{ color: #c0392b; font-weight: 600; }}
 </style></head>
 <body>
-<h1>Kamera-Vorschau <small>(nur im Arbeitsspeicher, aktualisiert alle 2 s)</small></h1>
+<h1>Camera preview <small>(in memory only, refreshes every 2 s)</small></h1>
 <div class="cams">{cams}</div>
 <script>
   setInterval(() => {{
@@ -51,7 +49,7 @@ PAGE = """<!doctype html>
         const el = document.getElementById("meta-" + dev);
         if (!el) {{ location.reload(); return; }}
         el.className = "meta" + (info.age_s > 10 ? " old" : "");
-        el.textContent = `${{info.bytes}} Bytes · RSSI ${{info.rssi}} dBm · Uptime ${{info.uptime}} s · vor ${{info.age_s}} s`;
+        el.textContent = `${{info.bytes}} bytes · RSSI ${{info.rssi}} dBm · uptime ${{info.uptime}} s · ${{info.age_s}} s ago`;
       }}
     }}).catch(() => {{}});
   }}, 2000);
@@ -68,19 +66,19 @@ class Handler(BaseHTTPRequestHandler):
         if not 0 < length <= MAX_BYTES:
             self.send_error(413 if length else 400, "bad size")
             return
-        body = self.rfile.read(length)  # nur im RAM
+        body = self.rfile.read(length)
         is_jpeg = body[:2] == b"\xff\xd8" and body[-2:] == b"\xff\xd9"
         device = self.headers.get("X-Device-Id", "?")
         rssi = self.headers.get("X-RSSI", "?")
         uptime = self.headers.get("X-Uptime-S", "?")
         print(
-            f"{time.strftime('%H:%M:%S')}  {device:<16} {length:>6} Bytes  "
-            f"JPEG {'ok' if is_jpeg else 'KAPUTT'}  RSSI {rssi} dBm  Uptime {uptime} s  "
-            f"von {self.client_address[0]}",
+            f"{time.strftime('%H:%M:%S')}  {device:<16} {length:>6} bytes  "
+            f"JPEG {'ok' if is_jpeg else 'CORRUPT'}  RSSI {rssi} dBm  uptime {uptime} s  "
+            f"from {self.client_address[0]}",
             flush=True,
         )
         if is_jpeg:
-            with lock:  # altes Foto dieser Kamera wird überschrieben
+            with lock:  # replaces the previous frame of this camera
                 latest[device] = {"jpeg": body, "bytes": length, "rssi": rssi, "uptime": uptime, "t": time.time()}
 
         self._send(200, "application/json", json.dumps({"ok": True, "bytes": length, "jpeg": is_jpeg}).encode())
@@ -95,7 +93,7 @@ class Handler(BaseHTTPRequestHandler):
                 f'<img data-dev="{html.escape(d)}" src="/last.jpg?device={html.escape(d)}" alt="">'
                 f'<div class="meta" id="meta-{html.escape(d)}">…</div></div>'
                 for d in devices
-            ) or "<p>Noch kein Foto empfangen – läuft die Kamera?</p>"
+            ) or "<p>No frame received yet - is the camera running?</p>"
             self._send(200, "text/html; charset=utf-8", PAGE.format(cams=cams).encode())
         elif url.path == "/last.jpg":
             device = parse_qs(url.query).get("device", [""])[0]
@@ -120,16 +118,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")  # Browser soll das Bild nicht zwischenspeichern
+        self.send_header("Cache-Control", "no-store")  # keep frames out of the browser cache
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, *args):  # Standard-Log abschalten, wir loggen selbst
+    def log_message(self, *args):  # silence default access log; frames are logged in do_POST
         pass
 
 
 if __name__ == "__main__":
-    print(f"Test-Empfänger läuft auf Port {PORT} – Vorschau: http://localhost:{PORT}/  (Strg+C beendet)")
+    print(f"Test receiver on port {PORT} - preview: http://localhost:{PORT}/  (Ctrl+C to stop)")
     try:
         ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
     except KeyboardInterrupt:

@@ -1,52 +1,59 @@
-// Find my Bike Slot – Kamera-Firmware (Seeed XIAO ESP32S3 Sense)
-// Macht alle 2 s ein Foto und schickt es per HTTP an den Auswerte-Rechner.
-// Das Foto liegt nur kurz im Kamera-Puffer und wird nirgends gespeichert.
+// Find my Bike Slot – camera node firmware (Seeed XIAO ESP32S3 Sense).
+//
+// Captures a JPEG every CAPTURE_INTERVAL_MS and POSTs it to the vision service.
+// Frames only live in the camera frame buffer and are never stored on the device.
 
 #include <Arduino.h>
-#include <ArduinoOTA.h>      // Firmware-Updates über WLAN
-#include <ESPmDNS.h>         // Rechner im Netz über ihren Namen finden (<name>.local)
-#include <HTTPClient.h>      // HTTP-Anfragen senden
-#include <WiFi.h>            // WLAN-Bibliothek
-#include <esp_camera.h>      // Kamera-Bibliothek von Espressif
-#include <esp_task_wdt.h>    // Watchdog: startet das Board neu, wenn das Programm hängt
-#include "camera_pins.h"     // unsere Pin-Zuordnung
-#include "config.h"          // unsere Einstellungen (Ziel-Rechner, Intervall, ...)
-#include "secrets.h"         // WLAN-Name und Passwort (nicht im Repo)
+#include <ArduinoOTA.h>
+#include <ESPmDNS.h>
+#include <HTTPClient.h>
+#include <WiFi.h>
+#include <esp_camera.h>
+#include <esp_task_wdt.h>
 
-const int LED_PIN = 21;      // gelbe User-LED, leuchtet bei LOW
-IPAddress visionIp;          // IP des Empfängers, wird nach dem WLAN-Start ermittelt
-int failures = 0;            // Fehler hintereinander (Foto oder Senden)
-unsigned long wifiLostSince = 0;  // seit wann kein WLAN (0 = WLAN ist da)
+#include "camera_pins.h"
+#include "config.h"
+#include "secrets.h"
 
-// ---------- Status-LED ----------
-// kurzes Blitzen      = Foto erfolgreich gesendet
-// schnelles Blinken   = sucht WLAN
-// Dauerlicht          = letzter Versuch ist fehlgeschlagen
+const int LED_PIN = 21;  // user LED, active low
 
-void ledOn()  { digitalWrite(LED_PIN, LOW); }
+IPAddress visionIp;               // resolved after WiFi is up
+int failures = 0;                 // consecutive capture/upload failures
+unsigned long wifiLostSince = 0;  // 0 while connected
+
+// ---------- Status LED ----------
+// short flash  = frame delivered
+// fast blink   = connecting to WiFi
+// steady on    = last attempt failed
+
+void ledOn() { digitalWrite(LED_PIN, LOW); }
 void ledOff() { digitalWrite(LED_PIN, HIGH); }
-void ledFlash() { ledOn(); delay(40); ledOff(); }
+void ledFlash() {
+  ledOn();
+  delay(40);
+  ledOff();
+}
 
-// ---------- Neustart & Watchdog ----------
+// ---------- Restart & watchdog ----------
 
 void restart(const char *reason) {
-  Serial.printf("NEUSTART: %s\n", reason);
+  Serial.printf("RESTART: %s\n", reason);
   Serial.flush();
   delay(500);
   ESP.restart();
 }
 
-// Warum hat das Board zuletzt (neu) gestartet? Hilft bei der Fehlersuche vor Ort.
+// Logged at boot so field failures (brownouts, hangs) can be diagnosed from the serial log.
 const char *resetReasonText() {
   switch (esp_reset_reason()) {
-    case ESP_RST_POWERON:  return "Strom eingeschaltet";
-    case ESP_RST_SW:       return "Neustart durch Firmware";
-    case ESP_RST_PANIC:    return "Absturz";
+    case ESP_RST_POWERON:  return "power on";
+    case ESP_RST_SW:       return "software restart";
+    case ESP_RST_PANIC:    return "crash";
     case ESP_RST_TASK_WDT:
     case ESP_RST_INT_WDT:
-    case ESP_RST_WDT:      return "Watchdog (Programm hing)";
-    case ESP_RST_BROWNOUT: return "Spannung zu niedrig (Netzteil/Kabel zu schwach?)";
-    default:               return "anderer Grund (z. B. Upload oder RESET-Taste)";
+    case ESP_RST_WDT:      return "watchdog (main loop hung)";
+    case ESP_RST_BROWNOUT: return "brownout (weak power supply or cable?)";
+    default:               return "other (upload or RESET button)";
   }
 }
 
@@ -56,19 +63,17 @@ void watchdogStart() {
       .timeout_ms = WATCHDOG_TIMEOUT_S * 1000, .idle_core_mask = 0, .trigger_panic = true};
   esp_task_wdt_reconfigure(&cfg);
 #else
-  esp_task_wdt_init(WATCHDOG_TIMEOUT_S, true);  // true = bei Ablauf neu starten
+  esp_task_wdt_init(WATCHDOG_TIMEOUT_S, true);
 #endif
-  esp_task_wdt_add(NULL);                       // diese Schleife überwachen
+  esp_task_wdt_add(NULL);
 }
 
-// "Ich lebe noch" an den Watchdog melden. Muss öfter als alle WATCHDOG_TIMEOUT_S passieren.
 void watchdogFeed() { esp_task_wdt_reset(); }
 
-// ---------- Kamera ----------
+// ---------- Camera ----------
 
-// Kamera einstellen und starten. Gibt true zurück, wenn es geklappt hat.
 bool cameraInit() {
-  camera_config_t config = {};          // alles erst mal auf 0
+  camera_config_t config = {};
   config.pin_d0 = Y2_GPIO_NUM;
   config.pin_d1 = Y3_GPIO_NUM;
   config.pin_d2 = Y4_GPIO_NUM;
@@ -85,105 +90,107 @@ bool cameraInit() {
   config.pin_sccb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;       // 20 MHz Takt für die Kamera
-  config.ledc_channel = LEDC_CHANNEL_0; // interner Taktgeber, der XCLK erzeugt
+  config.xclk_freq_hz = 20000000;
+  config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
 
-  config.pixel_format = PIXFORMAT_JPEG;     // Kamera liefert fertig komprimiertes JPEG
-  config.frame_size = FRAME_SIZE;           // Auflösung aus config.h
-  config.jpeg_quality = JPEG_QUALITY;       // 0..63, kleiner = schöner, aber größer
-  config.fb_count = 2;                      // 2 Bildpuffer ...
-  config.fb_location = CAMERA_FB_IN_PSRAM;  // ... im 8-MB-Zusatzspeicher
-  config.grab_mode = CAMERA_GRAB_LATEST;    // immer das neueste Bild liefern
+  config.pixel_format = PIXFORMAT_JPEG;  // sensor encodes JPEG in hardware
+  config.frame_size = FRAME_SIZE;
+  config.jpeg_quality = JPEG_QUALITY;
+  config.fb_count = 2;
+  config.fb_location = CAMERA_FB_IN_PSRAM;
+  config.grab_mode = CAMERA_GRAB_LATEST;  // never send a stale frame
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("Kamera-Start fehlgeschlagen, Fehler 0x%x\n", err);
+    Serial.printf("Camera init failed, error 0x%x\n", err);
     return false;
   }
 
-  // Bild-Einstellungen am Sensor selbst
   sensor_t *s = esp_camera_sensor_get();
-  s->set_vflip(s, CAMERA_VFLIP);        // auf den Kopf stellen
-  s->set_hmirror(s, CAMERA_HMIRROR);    // links/rechts spiegeln
-  Serial.printf("Kamera bereit: Sensor-ID 0x%x (0x26 = OV2640, 0x3660 = OV3660, 0x5640 = OV5640)\n",
+  s->set_vflip(s, CAMERA_VFLIP);
+  s->set_hmirror(s, CAMERA_HMIRROR);
+  if (s->id.PID == OV3660_PID) {
+    // OV3660 defaults are dark and oversaturated; values from the Espressif CameraWebServer example.
+    s->set_brightness(s, 1);
+    s->set_saturation(s, -2);
+  }
+  Serial.printf("Camera ready: sensor PID 0x%x (0x26 = OV2640, 0x3660 = OV3660, 0x5640 = OV5640)\n",
                 s->id.PID);
   return true;
 }
 
-// ---------- WLAN ----------
+// ---------- WiFi ----------
 
-// Übersetzt den WLAN-Status in lesbaren Text.
 const char *wifiStatusText(wl_status_t s) {
   switch (s) {
-    case WL_CONNECTED:       return "verbunden";
-    case WL_NO_SSID_AVAIL:   return "Netz nicht gefunden (zu schwach? Antenne?)";
-    case WL_CONNECT_FAILED:  return "Verbindung abgelehnt (Passwort?)";
-    case WL_CONNECTION_LOST: return "Verbindung verloren";
-    case WL_DISCONNECTED:    return "getrennt";
-    case WL_IDLE_STATUS:     return "wartet";
-    default:                 return "unbekannt";
+    case WL_CONNECTED:       return "connected";
+    case WL_NO_SSID_AVAIL:   return "network not found (weak signal? antenna attached?)";
+    case WL_CONNECT_FAILED:  return "connection rejected (wrong password?)";
+    case WL_CONNECTION_LOST: return "connection lost";
+    case WL_DISCONNECTED:    return "disconnected";
+    case WL_IDLE_STATUS:     return "idle";
+    default:                 return "unknown";
   }
 }
 
-// Mit dem WLAN aus secrets.h verbinden. Die LED blinkt schnell, solange gesucht wird.
 bool wifiConnect() {
-  Serial.printf("Verbinde mit '%s' ...\n", WIFI_SSID);
-  WiFi.mode(WIFI_STA);           // "Station" = Board verbindet sich mit einem WLAN
-  WiFi.setSleep(false);          // Funk nicht schlafen legen = schneller und stabiler
-  WiFi.setAutoReconnect(true);   // bei kurzen Abbrüchen selbst neu verbinden
-  WiFi.disconnect();             // evtl. halb offene alte Verbindung aufräumen
+  Serial.printf("Connecting to '%s' ...\n", WIFI_SSID);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);  // modem sleep adds latency and causes dropped uploads
+  WiFi.setAutoReconnect(true);
+  WiFi.disconnect();     // clear any half-open previous session
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
-    watchdogFeed();              // Warten ist kein Hängen
+    watchdogFeed();
     (millis() / 250) % 2 ? ledOn() : ledOff();
     delay(50);
   }
   ledOff();
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.printf("WLAN fehlgeschlagen: %s\n", wifiStatusText(WiFi.status()));
+    Serial.printf("WiFi failed: %s\n", wifiStatusText(WiFi.status()));
     return false;
   }
-  Serial.printf("WLAN verbunden! IP %s, Router %s, Signal %d dBm\n", WiFi.localIP().toString().c_str(),
+  Serial.printf("WiFi connected: IP %s, gateway %s, RSSI %d dBm\n", WiFi.localIP().toString().c_str(),
                 WiFi.gatewayIP().toString().c_str(), WiFi.RSSI());
   return true;
 }
 
-// Sorgt dafür, dass WLAN da ist. Startet das Board neu, wenn es zu lange weg ist.
+// Reconnects if needed; restarts the board if WiFi stays down for WIFI_RESTART_AFTER_MS.
 bool wifiEnsure() {
   if (WiFi.status() == WL_CONNECTED) {
     wifiLostSince = 0;
     return true;
   }
   if (wifiLostSince == 0) wifiLostSince = millis();
-  Serial.printf("WLAN weg (%s), seit %lu s\n", wifiStatusText(WiFi.status()), (millis() - wifiLostSince) / 1000);
+  Serial.printf("WiFi down (%s) for %lu s\n", wifiStatusText(WiFi.status()), (millis() - wifiLostSince) / 1000);
   if (wifiConnect()) {
     wifiLostSince = 0;
     return true;
   }
-  if (millis() - wifiLostSince > WIFI_RESTART_AFTER_MS) restart("zu lange kein WLAN");
+  if (millis() - wifiLostSince > WIFI_RESTART_AFTER_MS) restart("WiFi unavailable for too long");
   return false;
 }
 
-// ---------- Senden ----------
+// ---------- Upload ----------
 
-// Empfänger finden: erst über den Namen (mDNS), sonst die feste IP aus config.h.
+// Prefer mDNS so the vision host can change IP; fall back to the static IP from config.h.
 void resolveVision() {
   static bool mdnsStarted = false;
   if (!mdnsStarted) mdnsStarted = MDNS.begin(DEVICE_ID);
-  IPAddress ip = MDNS.queryHost(VISION_HOSTNAME, 3000);  // "Wer ist tempestD.local?" (max. 3 s)
+  IPAddress ip = MDNS.queryHost(VISION_HOSTNAME, 3000);
   if (ip != IPAddress(0, 0, 0, 0)) {
     visionIp = ip;
-    Serial.printf("Empfaenger %s.local gefunden: %s\n", VISION_HOSTNAME, ip.toString().c_str());
+    Serial.printf("Resolved %s.local -> %s\n", VISION_HOSTNAME, ip.toString().c_str());
   } else {
     visionIp.fromString(VISION_FALLBACK_IP);
-    Serial.printf("%s.local nicht gefunden, nehme feste IP %s\n", VISION_HOSTNAME, VISION_FALLBACK_IP);
+    Serial.printf("%s.local not found, using fallback IP %s\n", VISION_HOSTNAME, VISION_FALLBACK_IP);
   }
 }
 
-// Ein Foto per HTTP POST verschicken. Gibt den HTTP-Code zurück (200 = ok, negativ = Netzwerkfehler).
+// Returns the HTTP status code (200 = ok, negative = transport error).
 int sendFrame(camera_fb_t *fb) {
   HTTPClient http;
   String url = "http://" + visionIp.toString() + ":" + VISION_PORT + VISION_PATH;
@@ -191,38 +198,38 @@ int sendFrame(camera_fb_t *fb) {
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.begin(url);
   http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("X-Device-Id", DEVICE_ID);                 // wer schickt?
-  http.addHeader("X-RSSI", String(WiFi.RSSI()));            // wie gut ist das WLAN?
-  http.addHeader("X-Uptime-S", String(millis() / 1000));    // seit wann läuft das Board?
-  int code = http.POST(fb->buf, fb->len);                   // Bild-Bytes direkt aus dem Kamera-Puffer
+  http.addHeader("X-Device-Id", DEVICE_ID);
+  http.addHeader("X-RSSI", String(WiFi.RSSI()));
+  http.addHeader("X-Uptime-S", String(millis() / 1000));
+  int code = http.POST(fb->buf, fb->len);  // stream straight from the frame buffer, no copy
   http.end();
   return code;
 }
 
-// Fehler zählen. Zu viele hintereinander → Neustart (räumt Kamera, WLAN und Speicher komplett auf).
+// A restart is the most reliable way to recover camera, WiFi stack and heap at once.
 void countFailure() {
   failures++;
-  ledOn();                                  // Dauerlicht = es klemmt
-  if (failures >= MAX_CONSECUTIVE_FAILURES) restart("zu viele Fehler hintereinander");
+  ledOn();
+  if (failures >= MAX_CONSECUTIVE_FAILURES) restart("too many consecutive failures");
 }
 
-// ---------- Update über WLAN (OTA) ----------
+// ---------- OTA updates ----------
 
 bool otaStarted = false;
-bool otaRunning = false;     // läuft gerade ein Update?
+bool otaRunning = false;
 
-// Wartet auf neue Firmware übers WLAN (Port 3232). Nur mit OTA_PASSWORD aus secrets.h.
+// Listens for password-protected firmware updates on port 3232.
 void otaSetup() {
   ArduinoOTA.setHostname(DEVICE_ID);
   ArduinoOTA.setPassword(OTA_PASSWORD);
-  ArduinoOTA.setMdnsEnabled(false);       // mDNS starten wir selbst (resolveVision)
+  ArduinoOTA.setMdnsEnabled(false);  // mDNS is already started in resolveVision()
   ArduinoOTA.onStart([]() {
-    Serial.println("OTA: neue Firmware kommt ...");
+    Serial.println("OTA: receiving firmware ...");
     otaRunning = true;
-    esp_task_wdt_delete(NULL);            // Upload dauert länger als der Watchdog erlaubt
+    esp_task_wdt_delete(NULL);  // an upload takes longer than the watchdog timeout
     ledOn();
   });
-  ArduinoOTA.onEnd([]() { Serial.println("\nOTA: fertig, starte neu"); });
+  ArduinoOTA.onEnd([]() { Serial.println("\nOTA: done, restarting"); });
   ArduinoOTA.onProgress([](unsigned int done, unsigned int total) {
     static int lastPct = -1;
     int pct = done * 100 / total;
@@ -230,31 +237,30 @@ void otaSetup() {
     lastPct = pct;
   });
   ArduinoOTA.onError([](ota_error_t err) {
-    Serial.printf("OTA-Fehler %u (0=Passwort falsch)\n", err);
-    // Nur ein schon begonnenes Update braucht einen Neustart (Watchdog ist dann aus).
-    // Ein falsches Passwort wird nur gemeldet – sonst könnte jeder die Kamera neu starten lassen.
-    if (otaRunning) restart("OTA abgebrochen, alte Firmware laeuft weiter");
+    Serial.printf("OTA error %u (0 = auth failed)\n", err);
+    // Only an update in progress needs a restart (the watchdog is off then). A wrong password is
+    // just logged, otherwise anyone on the network could reboot the camera.
+    if (otaRunning) restart("OTA aborted, previous firmware still active");
   });
   ArduinoOTA.begin();
   otaStarted = true;
-  Serial.printf("OTA bereit: Update mit 'pio run -e xiao_s3_ota -t upload' an %s\n",
-                WiFi.localIP().toString().c_str());
+  Serial.printf("OTA ready: 'pio run -e xiao_s3_ota -t upload' to %s\n", WiFi.localIP().toString().c_str());
 }
 
-// ---------- Programm ----------
+// ---------- Main ----------
 
 void setup() {
   Serial.begin(115200);
   pinMode(LED_PIN, OUTPUT);
   ledOff();
-  delay(2000);                   // Monitor Zeit zum Verbinden geben
-  Serial.printf("\n=== Kamera '%s' startet (letzter Start: %s) ===\n", DEVICE_ID, resetReasonText());
+  delay(2000);  // give the serial monitor time to attach
+  Serial.printf("\n=== Camera '%s' booting (reset reason: %s) ===\n", DEVICE_ID, resetReasonText());
   watchdogStart();
 
   if (!cameraInit()) {
     ledOn();
-    delay(10000);                // 10 s Zeit, die Meldung zu lesen
-    restart("Kamera startet nicht - Aufsatz pruefen");
+    delay(10000);  // keep the error visible in the serial log
+    restart("camera init failed - check the camera module");
   }
   if (wifiConnect()) resolveVision();
 }
@@ -264,18 +270,18 @@ void loop() {
   unsigned long cycleStart = millis();
 
   if (wifiEnsure()) {
-    if (visionIp == IPAddress(0, 0, 0, 0)) resolveVision();  // falls WLAN beim Start noch fehlte
+    if (visionIp == IPAddress(0, 0, 0, 0)) resolveVision();  // WiFi was not up during setup()
     if (!otaStarted) otaSetup();
 
-    camera_fb_t *fb = esp_camera_fb_get();   // Foto holen
+    camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
-      Serial.println("Foto fehlgeschlagen");
+      Serial.println("Capture failed");
       countFailure();
     } else {
       int code = sendFrame(fb);
       size_t len = fb->len;
-      esp_camera_fb_return(fb);               // Puffer SOFORT zurückgeben
-      Serial.printf("Foto: %u Bytes -> HTTP %d (%lu ms) | WLAN %d dBm | Fehler in Folge: %d\n", len, code,
+      esp_camera_fb_return(fb);  // return the buffer immediately so the driver can refill it
+      Serial.printf("Frame: %u bytes -> HTTP %d (%lu ms) | RSSI %d dBm | consecutive failures: %d\n", len, code,
                     millis() - cycleStart, WiFi.RSSI(), code == 200 ? 0 : failures + 1);
       if (code == 200) {
         failures = 0;
@@ -286,10 +292,10 @@ void loop() {
     }
   }
 
-  // bis zum nächsten Foto warten (Sendezeit wird abgezogen, damit der Takt stimmt)
+  // Wait for the rest of the interval so the capture rate stays constant regardless of upload time.
   while (millis() - cycleStart < CAPTURE_INTERVAL_MS) {
     watchdogFeed();
-    if (otaStarted) ArduinoOTA.handle();     // nachschauen, ob ein Update ansteht
+    if (otaStarted) ArduinoOTA.handle();
     delay(20);
   }
 }
