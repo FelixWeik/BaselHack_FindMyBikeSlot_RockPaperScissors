@@ -1,7 +1,7 @@
 [project]
 name = "bikeslot-backend"
 version = "0.1.0"
-description = "Find my Bike Slot – Backend: nimmt Ergebnisse der Auswertung an und liefert die Heatmap"
+description = "Find my Bike Slot backend: ingests vision results and serves occupancy data"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "fastapi>=0.162.0",
@@ -15,8 +15,16 @@ package = false
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.2.0",
+    "ruff>=0.17.3",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]

@@ -1,6 +1,6 @@
-"""Speicher für Auswertungs-Ergebnisse (SQLite = Datenbank in einer Datei).
+"""SQLite store for vision results.
 
-Gespeichert werden nur Zahlen und Zustände – niemals Bilder.
+Only slot states and numbers are persisted - never images.
 """
 
 import json
@@ -14,8 +14,8 @@ from .models import Observation
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS observations (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    received_at TEXT NOT NULL,   -- wann das Backend die Nachricht bekommen hat (UTC)
-    ts          TEXT NOT NULL,   -- Zeitpunkt laut Auswertung (UTC)
+    received_at TEXT NOT NULL,   -- when the backend received it (UTC)
+    ts          TEXT NOT NULL,   -- capture/analysis time reported by vision (UTC)
     device_id   TEXT NOT NULL,
     slots_json  TEXT NOT NULL    -- [{"slot_id": "s1", "state": "free", "conf": 0.9}, ...]
 );
@@ -24,7 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_obs_device ON observations (device_id, id);
 
 
 def utc_iso(dt: datetime) -> str:
-    """Einheitliches Zeitformat: 2026-10-31T10:15:02Z"""
+    """Canonical timestamp format: 2026-10-31T10:15:02Z"""
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -34,7 +34,7 @@ class Store:
     def __init__(self, path: str | Path):
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        # FastAPI beantwortet Anfragen parallel → eine Verbindung, geschützt durch ein Schloss.
+        # FastAPI serves requests from a thread pool: share one connection, serialized by a lock.
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._lock = threading.Lock()
@@ -52,7 +52,7 @@ class Store:
             return cur.lastrowid
 
     def latest_per_device(self) -> list[dict]:
-        """Die jeweils neueste Nachricht jeder Kamera."""
+        """Most recent observation of each device."""
         with self._lock:
             rows = self._conn.execute(
                 """SELECT * FROM observations

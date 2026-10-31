@@ -1,4 +1,4 @@
-"""Automatische Tests: uv run pytest"""
+"""API tests. Run with: uv run pytest"""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,7 +8,7 @@ from app.main import create_app
 
 @pytest.fixture
 def client(tmp_path):
-    return TestClient(create_app(tmp_path / "test.db"))  # eigene Wegwerf-Datenbank
+    return TestClient(create_app(tmp_path / "test.db"))  # throwaway database per test
 
 
 def example(device_id="cam-memox-nord"):
@@ -47,20 +47,20 @@ def test_latest_is_per_device(client):
 
     latest = {o["device_id"]: o for o in client.get("/api/v1/observations/latest").json()}
     assert set(latest) == {"cam-a", "cam-b"}
-    assert latest["cam-a"]["slots"][0]["state"] == "free"  # die neuere Nachricht gewinnt
+    assert latest["cam-a"]["slots"][0]["state"] == "free"  # newer observation wins
 
 
 @pytest.mark.parametrize(
     "change",
     [
-        lambda o: o["slots"][0].update(state="vielleicht"),  # unbekannter Zustand
-        lambda o: o["slots"][0].update(conf=5),  # conf außerhalb 0..1
-        lambda o: o.update(slots=[]),  # keine Stellplätze
-        lambda o: o.pop("device_id"),  # Pflichtfeld fehlt
+        lambda o: o["slots"][0].update(state="maybe"),  # unknown state
+        lambda o: o["slots"][0].update(conf=5),  # conf outside 0..1
+        lambda o: o.update(slots=[]),  # no slots
+        lambda o: o.pop("device_id"),  # required field missing
     ],
 )
 def test_invalid_observation_rejected(client, change):
     obs = example()
     change(obs)
     assert client.post("/api/v1/observations", json=obs).status_code == 422
-    assert client.get("/api/v1/observations/latest").json() == []  # nichts gespeichert
+    assert client.get("/api/v1/observations/latest").json() == []  # nothing stored
