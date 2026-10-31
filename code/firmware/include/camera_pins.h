@@ -1,7 +1,7 @@
-// Kamera-Pins des Seeed XIAO ESP32S3 Sense (aus dem offiziellen Beispiel)
+// Camera pin mapping for the Seeed XIAO ESP32S3 Sense (from the official Seeed example).
 #pragma once
 
-#define PWDN_GPIO_NUM  -1   // -1 = nicht angeschlossen
+#define PWDN_GPIO_NUM  -1  // not connected
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM  10
 #define SIOD_GPIO_NUM  40
