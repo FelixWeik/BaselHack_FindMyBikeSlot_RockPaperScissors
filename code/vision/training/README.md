@@ -1,6 +1,6 @@
 # Training the bike detector
 
-The service loads `models/bikes.pt`: YOLO26n, one class (`bicycle`), trained at 960 px. Its run was named `yolo26n-960-v3`.
+The service loads `models/yolo-bikes-v3.pt`: YOLO26n, one class (`bicycle`), trained at 960 px. Its run was named `yolo26n-960-v3`.
 
 ## How it was made
 
@@ -16,7 +16,7 @@ Base weights download again on first use. No image or dataset belongs in git.
 
 At confidence 0.25 and 960 px, against the unmodified `yolo26n`.
 
-| | YOLO26n | `bikes.pt` |
+| | YOLO26n | `yolo-bikes-v3.pt` |
 |---|---|---|
 | Smart Bike Rack test, 20 photos, 141 bikes: precision | 0.716 | 0.894 |
 | Same: recall | 0.716 | 0.901 |
