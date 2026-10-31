@@ -83,3 +83,17 @@ def test_labels_of_overlapping_boxes_do_not_hide_each_other():
 
 def test_label_stays_inside_the_image():
     assert place_label((1000, 0, 1020, 100), (120, 30), [], (1024, 768)) == (904, 0, 1024, 30)
+
+
+def test_a_frame_is_masked_once_however_often_the_page_polls():
+    class CountingAnonymizer(FakeAnonymizer):
+        calls = 0
+
+        def anonymize(self, jpeg_bytes):
+            CountingAnonymizer.calls += 1
+            return super().anonymize(jpeg_bytes)
+
+    c = client(demo_view=True, anonymizer=CountingAnonymizer())
+    for _ in range(3):
+        assert c.get("/demo/cameras/cam-test/frame.jpg").status_code == 200
+    assert CountingAnonymizer.calls == 1

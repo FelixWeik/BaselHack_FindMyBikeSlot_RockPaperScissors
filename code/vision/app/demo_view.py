@@ -28,6 +28,9 @@ class DemoView:
     def __init__(self, anonymizer: Anonymizer):
         self.anonymizer = anonymizer
         self._latest: dict[str, Latest] = {}
+        # Masking is the expensive part (seconds of CPU): an open presenter page polls every second, so each frame
+        # is masked once, not once per request.
+        self._rendered: dict[str, tuple[bytes, tuple[Detection, ...], bytes]] = {}
         self._lock = threading.Lock()
 
     def update(self, device_id: str, jpeg: bytes, bikes: list[Detection], status: str) -> None:
@@ -47,9 +50,15 @@ class DemoView:
         """The latest frame, faces masked, bikes boxed. None if the camera has sent nothing yet."""
         with self._lock:
             entry = self._latest.get(device_id)
+            cached = self._rendered.get(device_id)
         if entry is None:
             return None
-        return draw_boxes(self.anonymizer.anonymize(entry.jpeg), entry.bikes)
+        if cached and cached[0] == entry.jpeg and cached[1] == entry.bikes:
+            return cached[2]
+        rendered = draw_boxes(self.anonymizer.anonymize(entry.jpeg), entry.bikes)
+        with self._lock:
+            self._rendered[device_id] = (entry.jpeg, entry.bikes, rendered)
+        return rendered
 
 
 def draw_boxes(jpeg: bytes, bikes: tuple[Detection, ...]) -> bytes:
