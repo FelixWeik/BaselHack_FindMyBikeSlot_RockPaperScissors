@@ -60,15 +60,41 @@ def draw_boxes(jpeg: bytes, bikes: tuple[Detection, ...]) -> bytes:
     width, height = image.size
     line = max(2, width // 200)
     font = ImageFont.load_default(size=max(12, width // 40))
-    for bike in bikes:
-        x1, y1, x2, y2 = bike.bbox
-        box = (x1 * width, y1 * height, x2 * width, y2 * height)
+    boxes = [(x1 * width, y1 * height, x2 * width, y2 * height) for x1, y1, x2, y2 in (bike.bbox for bike in bikes)]
+    # Boxes first, labels after: otherwise a later box's outline cuts through an earlier label.
+    for box in boxes:
         draw.rectangle(box, outline=BOX_COLOR, width=line)
+    placed: list[Rect] = []
+    for bike, box in zip(bikes, boxes, strict=True):
         label = f"bike {bike.conf:.0%}"
         _, _, text_w, text_h = draw.textbbox((0, 0), label, font=font, anchor="lt")
-        top = max(0, box[1] - text_h - 2 * line)  # above the box, or inside it at the image's top edge
-        draw.rectangle((box[0], top, box[0] + text_w + 2 * line, top + text_h + 2 * line), fill=BOX_COLOR)
-        draw.text((box[0] + line, top + line), label, fill=(0, 0, 0), font=font, anchor="lt")
+        tag = place_label(box, (text_w + 2 * line, text_h + 2 * line), placed, (width, height))
+        placed.append(tag)
+        draw.rectangle(tag, fill=BOX_COLOR)
+        draw.text((tag[0] + line, tag[1] + line), label, fill=(0, 0, 0), font=font, anchor="lt")
     output = io.BytesIO()
     image.save(output, "JPEG", quality=85)
     return output.getvalue()
+
+
+Rect = tuple[float, float, float, float]
+
+
+def place_label(box: Rect, size: tuple[float, float], placed: list[Rect], image: tuple[int, int]) -> Rect:
+    """Where a box's label goes: above it, else inside its top, else lower down, clear of the labels already placed.
+
+    Bikes side by side in a rack give overlapping boxes whose labels would otherwise hide each other.
+    """
+    w, h = size
+    left = max(0.0, min(box[0], image[0] - w))
+    candidates = [box[1] - h, box[1]]
+    candidates += [y for y in (p[3] for p in placed) if box[1] <= y <= box[3] - h]
+    for top in sorted(set(candidates)):
+        tag = (left, top, left + w, top + h)
+        if top >= 0 and top + h <= image[1] and not any(_overlap(tag, p) for p in placed):
+            return tag
+    return (left, max(0.0, box[1] - h), left + w, max(0.0, box[1] - h) + h)
+
+
+def _overlap(a: Rect, b: Rect) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
