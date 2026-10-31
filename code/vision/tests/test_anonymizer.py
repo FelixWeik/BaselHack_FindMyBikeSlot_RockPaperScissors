@@ -40,7 +40,11 @@ def test_deface_anonymizer_uses_blur_not_solid(monkeypatch):
     monkeypatch.setitem(sys.modules, "deface.centerface", centerface)
     monkeypatch.setitem(sys.modules, "deface.deface", face_ops)
     monkeypatch.setitem(sys.modules, "numpy", fake_numpy)
-    monkeypatch.setattr(Image, "fromarray", lambda frame: types.SimpleNamespace(save=lambda output, fmt, quality: output.write(b"\xff\xd8\xff\xd9")))
+    monkeypatch.setattr(
+        Image,
+        "fromarray",
+        lambda frame: types.SimpleNamespace(save=lambda output, fmt, quality: output.write(b"\xff\xd8\xff\xd9")),
+    )
 
     out = DefaceAnonymizer().anonymize(jpeg())
 

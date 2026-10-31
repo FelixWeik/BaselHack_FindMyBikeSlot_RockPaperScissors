@@ -33,7 +33,16 @@ class DefaceAnonymizer:
             if self._face_detector is None:
                 self._face_detector = CenterFace(in_shape=None, backend="auto")
             faces, _ = self._face_detector(frame, threshold=FACE_THRESHOLD)
-        anonymize_frame(faces, frame, mask_scale=MASK_MARGIN, replacewith="blur", ellipse=True, draw_scores=False, replaceimg=None, mosaicsize=20)
+        anonymize_frame(
+            faces,
+            frame,
+            mask_scale=MASK_MARGIN,
+            replacewith="blur",
+            ellipse=True,
+            draw_scores=False,
+            replaceimg=None,
+            mosaicsize=20,
+        )
         output = io.BytesIO()
         Image.fromarray(frame).save(output, "JPEG", quality=85)
         return output.getvalue()

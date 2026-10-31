@@ -1,0 +1,34 @@
+[tools]
+bun = "1.4.3"
+uv = "latest"
+python = "3.11"
+ruff = "latest"
+pre-commit = "latest"
+"pipx:platformio" = "latest"
+
+[tasks.start]
+run = "./scripts/start.sh"
+description = "Start backend, vision and web app"
+
+[tasks.format]
+run = "(cd code/backend && uv run ruff format . && uv run ruff check --fix .) && (cd code/vision && uv run ruff format . && uv run ruff check --fix .) && (cd code/frontend && bun run lint --fix)"
+description = "Format backend, vision and frontend"
+
+[tasks.lint]
+run = "(cd code/backend && uv run ruff check .) && (cd code/vision && uv run ruff check .) && (cd code/frontend && bun run lint)"
+description = "Lint backend, vision and frontend"
+
+[tasks.test]
+run = "(cd code/backend && uv run pytest) && (cd code/vision && uv run pytest) && (cd code/frontend && bun run build) && (cd code/firmware && pio run)"
+description = "Run backend, vision, frontend and firmware checks"
+
+[tasks.check]
+depends = ["lint", "test"]
+description = "Full check: lint + tests"
+
+[tasks.setup-hooks]
+run = "pre-commit install && pre-commit install --hook-type commit-msg && mise use pre-commit"
+description = "Install git hooks (pre-commit + commit-msg)"
+
+[hooks]
+postinstall = "mise setup-hooks"
