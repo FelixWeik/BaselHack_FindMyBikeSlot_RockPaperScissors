@@ -64,3 +64,9 @@ export async function captureCalibration(cameraId: string): Promise<Blob> {
 }
 
 export const fetchDebug = () => getJson("/api/debug", isDebug, { cache: "no-store" });
+
+export async function clearMockParkings() {
+  if (!MOCK_MODE) return;
+  const res = await fetch("/api/debug/parkings", { method: "DELETE", cache: "no-store" });
+  if (!res.ok) throw new Error(`/api/debug/parkings: HTTP ${res.status}`);
+}

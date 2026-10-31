@@ -7,7 +7,7 @@ import { ChevronRightIcon, DownloadIcon, FlaskIcon, ShieldIcon, StarIcon, TrashI
 import { Card, Eyebrow, Segmented } from "@/components/ui/primitives";
 import { useLive } from "@/hooks/useLive";
 import { useIsIos, usePwa } from "@/hooks/usePwa";
-import { MOCK_MODE } from "@/lib/api";
+import { clearMockParkings, MOCK_MODE } from "@/lib/api";
 import type { Palette } from "@/lib/heat";
 import { toggleFavorite, updateSettings, useSettings, type ThemeChoice } from "@/lib/settings";
 import { clearLiveCache } from "@/lib/store";
@@ -70,7 +70,8 @@ function ClearDataRow() {
   const [cleared, setCleared] = useState(false);
   return (
     <button
-      onClick={() => {
+      onClick={async () => {
+        await clearMockParkings();
         clearLiveCache();
         setCleared(true);
       }}

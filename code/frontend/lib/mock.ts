@@ -103,19 +103,25 @@ const PARKINGS: MockParking[] = [
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
-const saved = globalThis as unknown as { __fmbsParkings?: Map<string, ParkingLotConfig | null> };
+const saved = globalThis as unknown as { __fmbsParkings?: Map<string, ParkingLotConfig | null>; __fmbsParkingsCleared?: boolean };
 
 /** What the admin saved, by parking id; null marks a deleted one. Lives until the dev server restarts. */
 const savedParkings = () => (saved.__fmbsParkings ??= new Map());
 
 export function mockParkings(): ParkingLotConfig[] {
   const edits = savedParkings();
+  if (saved.__fmbsParkingsCleared) return [...edits.values()].filter((c): c is ParkingLotConfig => c !== null);
   const seeded = PARKINGS.flatMap((p) => {
     const edit = edits.get(p.config.id);
     return edit === null ? [] : [edit ?? p.config];
   });
   const created = [...edits.values()].filter((c): c is ParkingLotConfig => c !== null && !PARKINGS.some((p) => p.config.id === c.id));
   return [...seeded, ...created];
+}
+
+export function resetMockParkings() {
+  saved.__fmbsParkings = new Map();
+  saved.__fmbsParkingsCleared = true;
 }
 
 export const saveMockParking = (config: ParkingLotConfig) => void savedParkings().set(config.id, config);
@@ -128,7 +134,7 @@ const NEW_CAMERAS = [
 ];
 
 export function mockDevices(): Device[] {
-  const seeded = PARKINGS.flatMap((p) => p.config.cameras);
+  const seeded = saved.__fmbsParkingsCleared ? [] : PARKINGS.flatMap((p) => p.config.cameras);
   return [...NEW_CAMERAS, ...seeded].map(({ id, name }) => ({ id, name, kind: "camera", lastSeen: new Date().toISOString(), online: true }));
 }
 
