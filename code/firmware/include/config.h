@@ -17,7 +17,7 @@
 #define CAMERA_HMIRROR 0
 
 // Timing
-#define CAPTURE_INTERVAL_MS 2000
+#define CAPTURE_INTERVAL_MS 1000  // vision needs ~200 ms per frame, so 1 fps leaves headroom
 #define HTTP_TIMEOUT_MS 5000
 
 // Self-recovery: the node must run unattended for days.
