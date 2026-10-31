@@ -27,7 +27,7 @@ interface Props {
 
 export function ZoneInspector({ parking, devices, selectedRegionId, onSelectRegion, onUpdateParking, onAddZone, onDeleteRegion, onUnlinkCamera, onDeleteParking, onOpenZoneInfo }: Props) {
   return (
-    <div className="flex min-h-0 min-w-0 flex-col gap-4 lg:overflow-y-auto lg:overflow-x-hidden lg:pr-1">
+    <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden lg:overflow-y-auto lg:pr-1">
       <Card className="grid gap-4 p-4">
         <SectionTitle>Zone</SectionTitle>
         <label className="grid gap-2 text-sm">
@@ -58,8 +58,8 @@ export function ZoneInspector({ parking, devices, selectedRegionId, onSelectRegi
             return (
               <div key={region.id} className={`flex items-center gap-2 rounded-2xl p-2 ${active ? "bg-primary/15 ring-2 ring-primary" : "bg-surface-2"}`}>
                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onSelectRegion(region.id)}>
-                  <div className="truncate font-medium">{label}</div>
-                  <div className="text-xs text-muted">{region.slotCount} slots</div>
+                  <div className="break-words font-medium whitespace-normal">{label}</div>
+                  <div className="text-xs text-muted whitespace-normal">{region.slotCount} slots</div>
                 </button>
                 <button type="button" aria-label={`Edit ${label}`} onClick={() => onOpenZoneInfo(region.id)} className={iconButton}>
                   <PencilIcon size={18} />
@@ -80,13 +80,13 @@ export function ZoneInspector({ parking, devices, selectedRegionId, onSelectRegi
           {parking.cameras.map((camera) => {
             const online = devices.find((device) => device.id === camera.id)?.online ?? false;
             return (
-            <div key={camera.id} className="flex min-w-0 items-center gap-2 rounded-2xl bg-surface-2 p-2">
+            <div key={camera.id} className="flex min-w-0 items-start gap-2 rounded-2xl bg-surface-2 p-2">
               <div className="min-w-0 flex-1 pl-1">
                 <div className="flex items-center gap-1.5">
                   <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ background: online ? "var(--chance-good)" : "var(--chance-unknown)" }} />
-                  <span className="truncate font-medium">{camera.name}</span>
+                  <span className="break-words font-medium whitespace-normal">{camera.name}</span>
                 </div>
-                <div className="text-xs text-muted">
+                <div className="text-xs text-muted whitespace-normal break-words">
                   {online ? "Online" : "Offline"} · {camera.calibratedAt ? `Calibrated ${formatDate(camera.calibratedAt)}` : "Not calibrated"}
                 </div>
               </div>
