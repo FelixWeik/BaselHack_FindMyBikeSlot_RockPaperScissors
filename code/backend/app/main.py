@@ -7,6 +7,7 @@ Interactive docs:         http://localhost:8000/docs
 import contextlib
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -16,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import Store
-from .models import Observation, ParkingLotConfig
+from .models import DemoCount, Observation, ParkingLotConfig
 from .occupancy import Frame, Measurements, camera_occupancy, parking_occupancy, utc_iso
 
 log = logging.getLogger("uvicorn.error")
@@ -45,6 +46,7 @@ def create_app(
     """App factory. Tests pass their own database, clock and camera so they never touch the real ones."""
     store = Store(db_path or os.getenv("DB_PATH", DEFAULT_DB))
     measurements = Measurements()
+    parkings_lock = threading.Lock()  # a camera must not end up in two parkings because two saves raced
     # Older measurements no longer count, and a camera silent for this long is offline.
     ttl_s = measurement_ttl_s if measurement_ttl_s is not None else float(os.getenv("MEASUREMENT_TTL_S", "30"))
     capture = capture or vision_capture(os.getenv("VISION_URL", "http://localhost:8001"))
@@ -53,7 +55,7 @@ def create_app(
     # The web app may be served from another origin or a phone on the LAN. CORS_ORIGINS is a comma-separated list.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
+        allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "*").split(",") if origin.strip()],
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type"],
     )
@@ -120,11 +122,12 @@ def create_app(
         if parking.id != parking_id:
             raise HTTPException(status_code=422, detail="The id in the path and in the body differ")
         cameras = {camera.id for camera in parking.cameras}
-        for other in store.parkings():
-            taken = cameras & {camera["id"] for camera in other["cameras"]} if other["id"] != parking_id else None
-            if taken:
-                raise HTTPException(status_code=409, detail=f"{sorted(taken)} already belong to {other['id']}")
-        store.save_parking(parking)
+        with parkings_lock:
+            for other in store.parkings():
+                taken = cameras & {camera["id"] for camera in other["cameras"]} if other["id"] != parking_id else None
+                if taken:
+                    raise HTTPException(status_code=409, detail=f"{sorted(taken)} already belong to {other['id']}")
+            store.save_parking(parking)
         return parking.model_dump(mode="json", exclude_none=True)
 
     @app.delete("/api/v1/parkings/{parking_id}", status_code=204)
@@ -137,6 +140,31 @@ def create_app(
     def occupancy(parking_id: str) -> dict:
         """Estimated occupancy per physical zone, merged across cameras (`ParkingOccupancy`)."""
         return parking_occupancy(require_parking(parking_id), measurements, clock(), ttl_s)
+
+    @app.get("/api/v1/demo/overrides")
+    def demo_overrides() -> dict:
+        """Zone counts pinned from /admin/demo, as {parkingId: {zoneId: detected}}. Not part of the public API."""
+        pinned: dict[str, dict[str, int]] = {}
+        for (parking_id, zone_id), detected in measurements.overrides().items():
+            pinned.setdefault(parking_id, {})[zone_id] = detected
+        return pinned
+
+    @app.put("/api/v1/parkings/{parking_id}/zones/{zone_id}/demo")
+    def put_demo_override(parking_id: str, zone_id: str, body: DemoCount) -> dict:
+        """Pins a zone's bike count for a demo, in memory only. The cameras take over again after the DELETE."""
+        parking = require_parking(parking_id)
+        regions = {r["id"]: r["slotCount"] for r in parking["geometry"]["regions"]}
+        if zone_id not in regions:
+            raise HTTPException(status_code=404, detail="Unknown zone")
+        if body.detected > regions[zone_id]:
+            raise HTTPException(status_code=422, detail=f"At most {regions[zone_id]} bikes fit in this zone")
+        measurements.override(parking_id, zone_id, body.detected)
+        return {"parkingId": parking_id, "zoneId": zone_id, "detected": body.detected}
+
+    @app.delete("/api/v1/demo/overrides", status_code=204)
+    def clear_demo_overrides() -> Response:
+        measurements.clear_overrides()
+        return Response(status_code=204)
 
     @app.get("/api/v1/parkings/{parking_id}/cameras")
     def cameras(parking_id: str) -> dict:

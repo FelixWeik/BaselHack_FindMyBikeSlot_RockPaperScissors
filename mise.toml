@@ -19,7 +19,7 @@ run = "(cd code/backend && uv run ruff check .) && (cd code/vision && uv run ruf
 description = "Lint backend, vision and frontend"
 
 [tasks.test]
-run = "(cd code/backend && uv run pytest) && (cd code/vision && uv run pytest) && (cd code/frontend && bun run build) && (cd code/firmware && pio run)"
+run = "(cd code/backend && uv run pytest) && (cd code/vision && uv run pytest) && (cd code/frontend && bun test && bun run build) && (cd code/firmware && pio run)"
 description = "Run backend, vision, frontend and firmware checks"
 
 [tasks.check]

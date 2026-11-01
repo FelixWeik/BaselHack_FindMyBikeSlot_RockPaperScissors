@@ -40,6 +40,7 @@ class Measurements:
     def __init__(self) -> None:
         self._frames: dict[str, deque[Frame]] = {}
         self._devices: dict[str, DeviceInfo] = {}
+        self._overrides: dict[tuple[str, str], int] = {}
         self._lock = threading.Lock()
 
     def add(self, device_id: str, frame: Frame, rssi: int | None = None, uptime_s: int | None = None) -> None:
@@ -62,6 +63,19 @@ class Measurements:
     def device(self, device_id: str) -> DeviceInfo | None:
         with self._lock:
             return self._devices.get(device_id)
+
+    def override(self, parking_id: str, zone_id: str, detected: int) -> None:
+        """Demo only: pins a zone's bike count, whatever the cameras see. Kept in memory, never saved."""
+        with self._lock:
+            self._overrides[(parking_id, zone_id)] = detected
+
+    def overrides(self) -> dict[tuple[str, str], int]:
+        with self._lock:
+            return dict(self._overrides)
+
+    def clear_overrides(self) -> None:
+        with self._lock:
+            self._overrides.clear()
 
 
 def utc_iso(timestamp: float | None) -> str | None:
@@ -133,10 +147,26 @@ def parking_occupancy(
 ) -> dict:
     """The estimate per physical zone, merged across the cameras that hold a valid reading of it."""
     cameras = camera_occupancy(parking, measurements, now, ttl_s)
+    overrides = measurements.overrides()
     zones = []
     for region in parking["geometry"]["regions"]:
         zone_id = region["id"]
         capacity = region["slotCount"]
+        if (parking["id"], zone_id) in overrides:
+            detected = overrides[(parking["id"], zone_id)]
+            zones.append(
+                {
+                    "zoneId": zone_id,
+                    "capacity": capacity,
+                    "detected": detected,
+                    "occupancy": min(detected / capacity, 1.0),
+                    "overflow": detected > capacity,
+                    "status": "valid",
+                    "cameraCount": 1,
+                    "updatedAt": utc_iso(now),
+                }
+            )
+            continue
         readings = [
             (zone, camera["updatedAt"])
             for camera in cameras

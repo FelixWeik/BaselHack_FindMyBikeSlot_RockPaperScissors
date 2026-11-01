@@ -132,3 +132,35 @@ def test_browser_frontend_may_call_the_api(client):
     )
     assert r.status_code == 200
     assert r.headers["access-control-allow-origin"] == "*"
+
+
+def test_a_demo_count_replaces_the_cameras_until_it_is_cleared(client):
+    client.put("/api/v1/parkings/parking-1", json=parking())
+    assert client.get("/api/v1/parkings/parking-1/occupancy").json()["zones"][0]["status"] == "unknown"
+
+    pinned = client.put("/api/v1/parkings/parking-1/zones/cam-1-1/demo", json={"detected": 2})
+    assert pinned.status_code == 200
+    assert client.get("/api/v1/demo/overrides").json() == {"parking-1": {"cam-1-1": 2}}
+    zone = client.get("/api/v1/parkings/parking-1/occupancy").json()["zones"][0]
+    assert (zone["status"], zone["detected"], zone["capacity"]) == ("valid", 2, 3)
+    assert zone["occupancy"] == pytest.approx(2 / 3)
+
+    assert client.delete("/api/v1/demo/overrides").status_code == 204
+    assert client.get("/api/v1/parkings/parking-1/occupancy").json()["zones"][0]["status"] == "unknown"
+
+
+def test_a_demo_count_must_fit_an_existing_zone(client):
+    client.put("/api/v1/parkings/parking-1", json=parking())
+    assert client.put("/api/v1/parkings/parking-1/zones/cam-1-1/demo", json={"detected": 4}).status_code == 422
+    assert client.put("/api/v1/parkings/parking-1/zones/cam-1-1/demo", json={"detected": -1}).status_code == 422
+    assert client.put("/api/v1/parkings/parking-1/zones/nope/demo", json={"detected": 1}).status_code == 404
+    assert client.put("/api/v1/parkings/nope/zones/cam-1-1/demo", json={"detected": 1}).status_code == 404
+
+
+def test_cors_origins_are_trimmed(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORS_ORIGINS", "http://a.test, http://b.test")
+    client = TestClient(create_app(tmp_path / "test.db"))
+    reply = client.options(
+        "/api/v1/parkings", headers={"Origin": "http://b.test", "Access-Control-Request-Method": "GET"}
+    )
+    assert reply.headers["access-control-allow-origin"] == "http://b.test"

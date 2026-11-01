@@ -42,6 +42,8 @@ def http_sender(backend_url: str) -> SendObservation:
     def send(observation: dict) -> None:
         try:
             httpx.post(url, json=observation, timeout=3).raise_for_status()
+        except httpx.HTTPStatusError as err:
+            log.warning("Backend refused the observation (%s): HTTP %s", url, err.response.status_code)
         except httpx.HTTPError as err:
             # The backend being down must not affect frame intake; the next frame retries.
             log.warning("Backend unreachable (%s): %s", url, err)
@@ -103,6 +105,9 @@ def create_app(
         device_id = request.headers.get("x-device-id", "")
         if not DEVICE_ID_RE.match(device_id):
             raise HTTPException(400, "missing or invalid X-Device-Id")
+        declared = _number(request.headers.get("content-length"))
+        if declared is not None and declared > MAX_FRAME_BYTES:
+            raise HTTPException(413, "bad frame size")
         jpeg = await request.body()
         if not 0 < len(jpeg) <= MAX_FRAME_BYTES:
             raise HTTPException(413 if jpeg else 400, "bad frame size")

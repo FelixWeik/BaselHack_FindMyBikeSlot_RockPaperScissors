@@ -149,6 +149,11 @@ export function mockOccupancy(id: string, now: number, debug: DebugState): Parki
   const updatedAt = new Date(now).toISOString();
 
   const zones = config.geometry.regions.map((region, index): ZoneOccupancy => {
+    const pinned = debug.counts?.[`${id}:${region.id}`];
+    if (pinned !== undefined) {
+      const detected = Math.min(pinned, region.slotCount);
+      return { zoneId: region.id, capacity: region.slotCount, detected: pinned, occupancy: detected / region.slotCount, overflow: pinned > region.slotCount, status: "valid", cameraCount: 1, updatedAt };
+    }
     const forced: ForcedState = debug.zones[`${id}:${region.id}`] ?? "normal";
     if (forced === "unknown") return { zoneId: region.id, capacity: region.slotCount, detected: null, occupancy: null, overflow: false, status: "unknown", cameraCount: 0, updatedAt: null };
     // Each zone drifts around the parking's rhythm on its own, so they don't all read the same.
@@ -169,7 +174,7 @@ function initialClock(): Clock | null {
 }
 
 export function getDebug(): DebugState {
-  g.__fmbsDebug ??= { zones: {}, latencyMs: 0, networkCut: false, clock: initialClock() };
+  g.__fmbsDebug ??= { zones: {}, counts: {}, latencyMs: 0, networkCut: false, clock: initialClock() };
   return g.__fmbsDebug;
 }
 

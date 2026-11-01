@@ -109,6 +109,26 @@ def test_only_the_latest_frame_of_a_camera_is_analysed(make_client):
     assert seen == [newest]
 
 
+def test_a_failing_sender_does_not_stop_the_worker(make_client, caplog):
+    client, sent, worker = make_client()
+    calls = []
+
+    def broken(observation):
+        calls.append(observation)
+        raise RuntimeError("backend exploded")
+
+    worker.send = broken
+    post(client)
+    with caplog.at_level(logging.ERROR):
+        assert worker.step()
+    assert len(calls) == 1
+    assert "RuntimeError" in caplog.text
+    worker.send = sent.append
+    post(client)
+    assert worker.step()
+    assert len(sent) == 1
+
+
 def test_cameras_take_turns(make_client):
     client, sent, worker = make_client()
     for device in ("a", "b", "a"):

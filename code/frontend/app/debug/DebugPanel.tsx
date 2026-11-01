@@ -69,13 +69,14 @@ export function DebugPanel() {
   useEffect(() => {
     if (!MOCK_MODE) return;
     fetch("/api/debug")
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then(setState)
       .catch(() => {});
   }, []);
 
   const patch = useCallback(async (p: Partial<DebugState>) => {
     const res = await fetch("/api/debug", { method: "POST", body: JSON.stringify(p) });
+    if (!res.ok) return;
     setState(await res.json());
     void refresh();
   }, []);
@@ -118,7 +119,7 @@ export function DebugPanel() {
         </Card>
 
         <button
-          onClick={() => void patch({ zones: {}, latencyMs: 0, networkCut: false, clock: null })}
+          onClick={() => void patch({ zones: {}, counts: {}, latencyMs: 0, networkCut: false, clock: null })}
           className="tap min-h-12 rounded-full bg-surface font-semibold shadow-card"
         >
           Reset everything

@@ -63,6 +63,34 @@ export async function captureCalibration(cameraId: string): Promise<Blob> {
   return res.blob();
 }
 
+/**
+ * Demo only (/admin/demo): pins how many bikes a zone holds, whatever the cameras see.
+ * Against the real backend this is held in its memory; in mock mode, in the mock's debug state.
+ */
+export async function setDemoCount(parkingId: string, zoneId: string, detected: number) {
+  if (MOCK_MODE) {
+    const { counts } = await fetchDebug();
+    const res = await fetch("/api/debug", { method: "POST", body: JSON.stringify({ counts: { ...counts, [`${parkingId}:${zoneId}`]: detected } }) });
+    if (!res.ok) throw new Error(`/api/debug: HTTP ${res.status}`);
+    return;
+  }
+  await send(`/parkings/${encodeURIComponent(parkingId)}/zones/${encodeURIComponent(zoneId)}/demo`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ detected }),
+  });
+}
+
+/** Gives the zones back to their cameras. */
+export async function clearDemoCounts() {
+  if (MOCK_MODE) {
+    const res = await fetch("/api/debug", { method: "POST", body: JSON.stringify({ counts: {} }) });
+    if (!res.ok) throw new Error(`/api/debug: HTTP ${res.status}`);
+    return;
+  }
+  await send("/demo/overrides", { method: "DELETE" });
+}
+
 export const fetchDebug = () => getJson("/api/debug", isDebug, { cache: "no-store" });
 
 export async function clearMockParkings() {

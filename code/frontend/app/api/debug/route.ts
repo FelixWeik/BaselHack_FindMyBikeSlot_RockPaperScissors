@@ -11,6 +11,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   if (!MOCK_ENABLED) return mockDisabled();
-  const patch = (await req.json()) as Partial<DebugState>;
-  return Response.json(setDebug(patch));
+  const patch: unknown = await req.json().catch(() => null);
+  if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return Response.json({ error: "expected a JSON object" }, { status: 400 });
+  return Response.json(setDebug(patch as Partial<DebugState>));
 }

@@ -54,7 +54,7 @@ How the UI reads the data:
 - The recommendation only considers open parkings. Favorites win a near-tie, and the current pick is held through a near-tie so it doesn't flicker.
 - "Updated Xs ago" is measured from the last successful fetch on the client; a stale measurement is already `unknown` on the server.
 
-**The forecast is simulated** (`lib/forecast.ts`) until the backend provides history. The UI labels it as such.
+**The forecast is simulated** (`lib/forecast.ts`) until the backend provides history.
 
 ## Code layout
 

@@ -34,6 +34,12 @@ class Observation(BaseModel):
     uptime_s: int | None = None
 
 
+class DemoCount(BaseModel):
+    """A bike count pinned on a zone by /admin/demo."""
+
+    detected: int = Field(ge=0, le=100_000)
+
+
 class ConfigModel(BaseModel):
     """Field names mirror code/types/parkingLotConfig.ts. Unknown fields are refused, so a schema drift fails loudly."""
 
@@ -41,8 +47,8 @@ class ConfigModel(BaseModel):
 
 
 class Point(ConfigModel):
-    x: float
-    y: float
+    x: float = Field(allow_inf_nan=False)
+    y: float = Field(allow_inf_nan=False)
 
 
 class ImagePoint(ConfigModel):

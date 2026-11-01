@@ -128,6 +128,8 @@ export type ForcedState = "normal" | "full" | "empty" | "unknown";
 export interface DebugState {
   /** Keyed by `${parkingId}:${regionKey}` */
   zones: Record<string, ForcedState>;
+  /** Bikes pinned on a zone from /admin/demo, keyed like `zones`. */
+  counts: Record<string, number>;
   latencyMs: number;
   networkCut: boolean;
   /** Replaces the real time everywhere in mock mode, to replay a day during a demo. */

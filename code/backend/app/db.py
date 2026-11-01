@@ -34,7 +34,11 @@ def _usable(config_json: str) -> dict | None:
     try:
         return ParkingLotConfig.model_validate_json(config_json).model_dump(mode="json", exclude_none=True)
     except ValidationError:
-        log.warning("Ignoring a saved parking that no longer matches the schema: %s", json.loads(config_json).get("id"))
+        try:
+            parking_id = json.loads(config_json).get("id")
+        except (ValueError, AttributeError):
+            parking_id = "?"
+        log.warning("Ignoring a saved parking that no longer matches the schema: %s", parking_id)
         return None
 
 

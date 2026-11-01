@@ -40,6 +40,8 @@ let inflight: Promise<void> | null = null;
 let failures = 0;
 let configsAt = 0;
 let persistedAt = 0;
+/** Bumped when the cache is cleared, so a request started before it can't bring the old data back. */
+let generation = 0;
 
 function emit(next: Partial<LiveSnapshot>) {
   snapshot = { ...snapshot, ...next };
@@ -95,11 +97,16 @@ export function clearLiveCache() {
   }
   snapshot = { ...EMPTY, simulatedClock: snapshot.simulatedClock };
   configsAt = 0;
+  generation++;
+  inflight = null;
   listeners.forEach((l) => l());
   void refresh();
 }
 
+const isGone = (error: unknown) => error instanceof Error && error.message.endsWith("HTTP 404");
+
 async function load() {
+  const started = generation;
   let failed = false;
 
   let parkings = snapshot.parkings;
@@ -128,11 +135,18 @@ async function load() {
           };
           entry.history = [...previous.filter((s) => fetchedAt - s.t < HISTORY_MS), sample];
           entries[config.id] = entry;
-        } catch {
-          failed = true;
+        } catch (error) {
+          if (isGone(error)) {
+            // Deleted since the configs were fetched: not a connectivity problem, just a list to refresh.
+            delete entries[config.id];
+            configsAt = 0;
+          } else failed = true;
         }
       }),
     );
+    for (const id of Object.keys(entries)) {
+      if (!parkings.some((config) => config.id === id)) delete entries[id];
+    }
   }
 
   let simulatedClock = snapshot.simulatedClock;
@@ -144,6 +158,7 @@ async function load() {
     }
   }
 
+  if (started !== generation) return;
   failures = failed ? failures + 1 : 0;
   emit({ parkings, entries, settled: true, failing: failed, simulatedClock });
   if (Date.now() - persistedAt > PERSIST_MS) persist();
@@ -157,10 +172,14 @@ function schedule() {
 }
 
 export function refresh(): Promise<void> {
-  inflight ??= load().finally(() => {
-    inflight = null;
-    schedule();
-  });
+  if (!inflight) {
+    const run: Promise<void> = load().finally(() => {
+      if (inflight !== run) return;
+      inflight = null;
+      schedule();
+    });
+    inflight = run;
+  }
   return inflight;
 }
 

@@ -27,20 +27,20 @@ export function ScheduleEditor({ schedule, onChange }: { schedule: ParkingSchedu
       </label>
       <div className="grid gap-2">
         {DAYS.map((day) => {
-          const window = schedule.weekly[day][0];
+          const [window, ...others] = schedule.weekly[day] ?? [];
           return (
             <div key={day} className="grid min-w-0 gap-2 rounded-2xl bg-surface-2 p-3">
               <div className="flex items-center justify-between gap-2">
                 <strong className="capitalize">{day}</strong>
                 <label className="flex items-center gap-2 text-sm text-muted">
-                  <input type="checkbox" checked={Boolean(window)} onChange={(e) => setDay(day, e.target.checked ? [window ?? DEFAULT_WINDOW] : [])} />
+                  <input type="checkbox" checked={Boolean(window)} onChange={(e) => setDay(day, e.target.checked ? [window ?? DEFAULT_WINDOW, ...others] : [])} />
                   Open
                 </label>
               </div>
               {window ? (
                 <div className="grid grid-cols-2 gap-2">
-                  <input type="time" aria-label={`${day} opens`} className={inputClass} value={window.start} onChange={(e) => setDay(day, [{ ...window, start: e.target.value }])} />
-                  <input type="time" aria-label={`${day} closes`} className={inputClass} value={window.end} onChange={(e) => setDay(day, [{ ...window, end: e.target.value }])} />
+                  <input type="time" aria-label={`${day} opens`} className={inputClass} value={window.start} onChange={(e) => e.target.value && setDay(day, [{ ...window, start: e.target.value }, ...others])} />
+                  <input type="time" aria-label={`${day} closes`} className={inputClass} value={window.end} onChange={(e) => e.target.value && setDay(day, [{ ...window, end: e.target.value }, ...others])} />
                 </div>
               ) : (
                 <span className="text-sm text-muted">Closed</span>

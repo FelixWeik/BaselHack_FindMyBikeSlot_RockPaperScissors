@@ -1,4 +1,4 @@
-// Simulated until the backend exposes history; the UI always labels this data as simulated.
+// Simulated until the backend exposes history.
 
 export const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 export const FIRST_HOUR = 6;
@@ -37,9 +37,8 @@ export function occupancy(parkingId: string, day: number, hour: number): number 
 export const chanceAt = (parkingId: string, day: number, hour: number) => 1 - occupancy(parkingId, day, hour);
 
 export function formatHour(h: number): string {
-  const whole = Math.floor(h);
-  const minutes = Math.round((h - whole) * 60);
-  return `${whole}:${String(minutes).padStart(2, "0")}`;
+  const total = Math.round(h * 60);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
 /** First quarter-hour of the morning at which spots get hard to find. */

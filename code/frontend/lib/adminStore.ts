@@ -53,7 +53,16 @@ async function drain(): Promise<boolean> {
   try {
     while (pending.size > 0) {
       const [id, parking] = pending.entries().next().value as [string, AdminParking | null];
-      await (parking ? saveParking(parking) : deleteParking(id));
+      try {
+        await (parking ? saveParking(parking) : deleteParking(id));
+      } catch (error) {
+        // Sent to the back of the queue, so a change the server refuses can't keep the other ones from being saved.
+        if (pending.get(id) === parking) {
+          pending.delete(id);
+          pending.set(id, parking);
+        }
+        throw error;
+      }
       // An edit made during the request replaced the entry: keep it for the next round.
       if (pending.get(id) === parking) pending.delete(id);
     }
@@ -69,8 +78,10 @@ async function drain(): Promise<boolean> {
 /** Sends the unsaved changes now; resolves to whether everything reached the server. */
 export function flushAdmin(): Promise<boolean> {
   clearTimeout(timer);
-  flushing ??= drain().finally(() => {
+  flushing ??= drain().then((ok) => {
     flushing = null;
+    // An edit that arrived while the last request was running.
+    return ok && pending.size > 0 ? flushAdmin() : ok;
   });
   return flushing;
 }
@@ -116,7 +127,14 @@ export function useAdmin(): AdminState {
   useEffect(() => {
     void loadAdmin();
     const timer = setInterval(() => void refreshDevices(), DEVICES_POLL_MS);
-    return () => clearInterval(timer);
+    const flushOnLeave = () => {
+      if (pending.size > 0) void flushAdmin();
+    };
+    window.addEventListener("pagehide", flushOnLeave);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("pagehide", flushOnLeave);
+    };
   }, []);
   return useSyncExternalStore(subscribe, () => state, () => INITIAL);
 }

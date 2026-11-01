@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { deleteMockParking, mockDevices, mockParkings, resetMockParkings, saveMockParking } from "./mock";
+import { deleteMockParking, getDebug, mockDevices, mockOccupancy, mockParkings, resetMockParkings, saveMockParking, setDebug } from "./mock";
 import type { ParkingLotConfig } from "./types";
 
 afterEach(() => {
@@ -29,5 +29,18 @@ describe("mock parking reset", () => {
 
     deleteMockParking(custom.id);
     expect(mockParkings()).toEqual([]);
+  });
+});
+
+describe("pinned counts", () => {
+  test("replace the simulated reading of a zone until they are cleared", () => {
+    setDebug({ counts: { "p1:A": 7 } });
+    const zone = mockOccupancy("p1", Date.now(), getDebug())?.zones.find((z) => z.zoneId === "A");
+    expect(zone).toMatchObject({ detected: 7, capacity: 18, status: "valid", overflow: false });
+    expect(zone?.occupancy).toBeCloseTo(7 / 18, 2);
+
+    setDebug({ counts: {} });
+    const other = mockOccupancy("p1", Date.now(), getDebug())?.zones.find((z) => z.zoneId === "A");
+    expect(other?.detected).not.toBe(7);
   });
 });

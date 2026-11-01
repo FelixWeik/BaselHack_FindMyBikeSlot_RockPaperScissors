@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { type AdminParking, type AdminRegion, newParking, rectangle, removeCamera, removeRegion, replaceRegion } from "./adminModel";
 import { applyCalibration, type CalibrationDraft, drawingIssues, type DraftSubZone, forNewTarget, placeSubZones, polygonsOverlap, selfCrosses, startDraft, targetIssues } from "./calibration";
 import { analyze, bestRegion, boxOf, overallChance } from "./geometry";
-import { chanceAt, freesUpAt, tightFrom } from "./forecast";
+import { chanceAt, formatHour, freesUpAt, tightFrom } from "./forecast";
 import { recommend, trendOf, type Sample } from "./recommend";
 import { clockInZone, isOpenAt, openState } from "./schedule";
 import { chanceColor } from "./heat";
@@ -322,5 +322,12 @@ describe("admin calibration", () => {
   test("a new zone gets a clean, unique id", () => {
     expect(newParking("Vélo Nord !", new Set()).id).toBe("velo-nord");
     expect(newParking("Parking", new Set(["parking"])).id).not.toBe("parking");
+  });
+});
+
+describe("formatHour", () => {
+  test("carries minutes into the hour", () => {
+    expect(formatHour(7.5)).toBe("7:30");
+    expect(formatHour(7.999)).toBe("8:00");
   });
 });

@@ -73,9 +73,6 @@ function ForecastBody({ item }: { item: ParkingItem }) {
           </SectionTitle>
           <WeekMatrix config={item.config} selectedDay={day} clock={item.clock} onSelectDay={setPicked} />
         </Card>
-        <p className="mt-3 px-2 text-sm text-muted">
-          Simulated forecast: it will use real history once the backend provides it.
-        </p>
       </section>
     </div>
   );

@@ -50,7 +50,6 @@ export function OutlookStrip({ item }: { item: ParkingItem }) {
           <span>{HOURS[0]}:00</span>
           <span>{HOURS[HOURS.length - 1]}:00</span>
         </div>
-        <p className="mt-2 text-xs text-muted">Simulated forecast</p>
       </Card>
     </Link>
   );

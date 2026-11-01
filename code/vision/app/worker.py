@@ -61,18 +61,22 @@ class FrameWorker:
             # Only the error's type: a message could quote the input.
             log.error("Detection failed for %s: %s", device_id, type(err).__name__)
             status = "failed"
-        if self.on_result:
-            self.on_result(device_id, frame.jpeg, bikes, status)
-        self.send(
-            {
-                "device_id": device_id,
-                "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "status": status,
-                "bikes": [{"bbox": list(b.bbox), "conf": b.conf} for b in bikes],
-                "rssi": frame.rssi,
-                "uptime_s": frame.uptime_s,
-            }
-        )
+        try:
+            if self.on_result:
+                self.on_result(device_id, frame.jpeg, bikes, status)
+            self.send(
+                {
+                    "device_id": device_id,
+                    "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "status": status,
+                    "bikes": [{"bbox": list(b.bbox), "conf": b.conf} for b in bikes],
+                    "rssi": frame.rssi,
+                    "uptime_s": frame.uptime_s,
+                }
+            )
+        except Exception as err:
+            # A failing sender or demo view must not end the only thread that analyses frames.
+            log.error("Delivering the result of %s failed: %s", device_id, type(err).__name__)
 
     def step(self) -> bool:
         """Handles one waiting frame, if any. For tests; the service runs `_run`."""

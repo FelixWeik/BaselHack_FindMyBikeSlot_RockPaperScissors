@@ -90,7 +90,7 @@ export function WeekMatrix({ config, selectedDay, clock, onSelectDay }: Props) {
         <summary className="cursor-pointer font-medium text-muted">View as a table</summary>
         <div className="scroller mt-2 overflow-x-auto">
           <table className="w-full border-collapse text-xs tabular-nums">
-            <caption className="sr-only">Chance of a spot by day and hour, simulated</caption>
+            <caption className="sr-only">Chance of a spot by day and hour</caption>
             <thead>
               <tr>
                 <th scope="col" className="p-1 text-left font-semibold">

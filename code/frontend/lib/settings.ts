@@ -36,9 +36,21 @@ function applyAppearance(s: Settings) {
   });
 }
 
+/** What was stored may be from an older version or hand-edited: keep only the fields that have the right shape. */
+function sanitize(stored: Partial<Settings> | null | undefined): Settings {
+  const s: Partial<Settings> = typeof stored === "object" && stored !== null ? stored : {};
+  return {
+    theme: s.theme === "light" || s.theme === "dark" || s.theme === "system" ? s.theme : DEFAULTS.theme,
+    palette: s.palette === "safe" || s.palette === "standard" ? s.palette : DEFAULTS.palette,
+    favorites: Array.isArray(s.favorites) ? s.favorites.filter((f): f is string => typeof f === "string") : DEFAULTS.favorites,
+    lastParking: typeof s.lastParking === "string" ? s.lastParking : DEFAULTS.lastParking,
+    installDismissed: s.installDismissed === true,
+  };
+}
+
 function read(): Settings {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(readStored(SETTINGS_KEY) ?? "{}") as Partial<Settings>) };
+    return sanitize(JSON.parse(readStored(SETTINGS_KEY) ?? "{}") as Partial<Settings>);
   } catch {
     return DEFAULTS;
   }
@@ -57,5 +69,5 @@ export function toggleFavorite(id: string) {
 
 export function useSettings(): Settings {
   const stored = useStoredJSON<Partial<Settings>>(SETTINGS_KEY);
-  return useMemo(() => ({ ...DEFAULTS, ...stored }), [stored]);
+  return useMemo(() => sanitize(stored), [stored]);
 }
