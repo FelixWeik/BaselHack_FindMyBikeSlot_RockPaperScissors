@@ -131,7 +131,8 @@ assets/       pitch material
 [FelixWeik](https://github.com/FelixWeik) ·
 [LuckyTheCookie](https://github.com/LuckyTheCookie) ·
 [Nynferid](https://github.com/Nynferid) ·
-[Weftus](https://github.com/Weftus)
+[Weftus](https://github.com/Weftus) ·
+[Corentin250000](https://github.com/Corentin250000)
 
 ## License
 
