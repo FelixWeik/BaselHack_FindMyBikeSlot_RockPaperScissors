@@ -31,7 +31,7 @@ somewhere you shouldn't, or miss your train. Nobody knows where the free spots a
 | Status | running end to end | detection works on recorded scans, not yet connected to the backend |
 
 <p align="center">
-  <img src="assets/lidarData/output/2026-10-31_17-05-58-923336_2bike_handlebar_radar_ransac.png" width="520" alt="Lidar scan seen from above: the wall in blue, two bikes as red dents">
+  <img src="assets/lidarData/output/analysis_2bike_handlebar_residuals2.png" width="520" alt="Lidar scan seen from above: the wall in blue, two bikes as red dents">
   <br><sub>A lidar scan from above: the wall of the rack in blue, two bikes as red dents. How it works: <a href="documentation/lidar_ransac_outliers.md">documentation/lidar_ransac_outliers.md</a>.</sub>
 </p>
 
