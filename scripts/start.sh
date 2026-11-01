@@ -60,8 +60,14 @@ run backend "$ROOT/code/backend" env VISION_URL="http://localhost:$VISION_PORT" 
 run vision "$ROOT/code/vision" env DEMO_VIEW="$DEMO_VIEW" BACKEND_URL="http://localhost:$BACKEND_PORT" \
   MDNS_HOSTNAME="${MDNS_HOSTNAME-bikeslot}" PORT="$VISION_PORT" \
   uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port "$VISION_PORT"
-run web "$ROOT/code/frontend" env MOCK_MODE=false NEXT_PUBLIC_API_URL="http://$IP:$BACKEND_PORT" \
-  $JS run dev -- --port "$WEB_PORT"
+WEB_ENV=(MOCK_MODE=false NEXT_PUBLIC_API_URL="http://$IP:$BACKEND_PORT")
+if [[ "${WEB_PROD:-0}" == 1 ]]; then
+  # Production build: the only mode where the service worker runs, so the PWA can be installed.
+  (cd "$ROOT/code/frontend" && env "${WEB_ENV[@]}" $JS run build)
+  run web "$ROOT/code/frontend" env "${WEB_ENV[@]}" $JS run start -- --port "$WEB_PORT" --hostname 0.0.0.0
+else
+  run web "$ROOT/code/frontend" env "${WEB_ENV[@]}" $JS run dev -- --port "$WEB_PORT"
+fi
 
 for _ in $(seq 60); do
   in_use "$BACKEND_PORT" && in_use "$VISION_PORT" && break
