@@ -1,0 +1,25 @@
+file,reference_used,classification,bicycle_regions,region_number,start_step,end_step,width_steps,block_count,block_positions_mm,max_xy_displacement_mm,threshold_mm,note
+2026-10-31_16-42-18-362325_2bikes_1.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,2,1,686,775,90,0,,162.0,70,Candidate region; verify against labelled scans
+2026-10-31_16-42-18-362325_2bikes_1.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,2,2,1141,1246,106,0,,147.0,70,Candidate region; verify against labelled scans
+2026-10-31_16-47-04-085339_2Bikes_2.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,5,1,687,784,98,0,,161.0,70,Candidate region; verify against labelled scans
+2026-10-31_16-47-04-085339_2Bikes_2.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,5,2,1059,1081,23,0,,81.0,70,Candidate region; verify against labelled scans
+2026-10-31_16-47-04-085339_2Bikes_2.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,5,3,1100,1115,16,0,,97.0,70,Candidate region; verify against labelled scans
+2026-10-31_16-47-04-085339_2Bikes_2.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,5,4,1151,1230,80,0,,151.0,70,Candidate region; verify against labelled scans
+2026-10-31_16-47-04-085339_2Bikes_2.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,5,5,1255,1263,9,0,,80.0,70,Candidate region; verify against labelled scans
+2026-10-31_16-56-31-448613_1bike.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,3,1,980,1056,77,0,,129.0,70,Candidate region; verify against labelled scans
+2026-10-31_16-56-31-448613_1bike.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,3,2,1087,1156,70,0,,178.0,70,Candidate region; verify against labelled scans
+2026-10-31_16-56-31-448613_1bike.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,3,3,1207,1263,57,0,,125.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-01-15-192458_2bike_backwheel.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,2,1,1023,1114,92,0,,136.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-01-15-192458_2bike_backwheel.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,2,2,2025,2118,94,0,,160.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-05-58-923336_2bike_handlebar.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,5,1,866,1109,244,9,"(-1260.6, -1596.8); (-1060.6, -1596.8); (-860.6, -1596.8); (-1260.6, -1396.8); (-1060.6, -1396.8); (-860.6, -1396.8); (-1260.6, -1196.8); (-1060.6, -1196.8); (-860.6, -1196.8)",885.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-05-58-923336_2bike_handlebar.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,5,2,1192,1274,83,0,,111.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-05-58-923336_2bike_handlebar.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,5,3,2202,2360,159,0,,155.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-05-58-923336_2bike_handlebar.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,5,4,2467,2515,49,0,,94.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-05-58-923336_2bike_handlebar.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,5,5,2634,2748,115,0,,148.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,6,1,2,70,69,0,,180.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,6,2,95,258,164,0,,132.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,6,3,305,446,142,0,,273.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,6,4,1928,2068,141,0,,213.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,6,5,2129,2178,50,0,,106.0,70,Candidate region; verify against labelled scans
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,2026-10-31_16-51-47-769836_reference.txt,bicycle,6,6,2432,2550,119,0,,241.0,70,Candidate region; verify against labelled scans
+2026-10-31_16-51-47-769836_reference.txt,2026-10-31_16-51-47-769836_reference.txt,no_bicycle,0,0,,,0,0,,0.0,70,No region passed the current threshold/minimum-length settings

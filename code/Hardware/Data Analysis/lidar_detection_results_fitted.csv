@@ -1,0 +1,24 @@
+file,reference_used,classification,bicycle_regions,region_number,start_step,end_step,width_steps,block_count,block_positions_mm,max_xy_displacement_mm,threshold_mm,note
+2026-10-31_16-42-18-362325_2bikes_1.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,3,1,660,674,15,0,,81.6,70,Second run against fitted reference
+2026-10-31_16-42-18-362325_2bikes_1.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,3,2,686,776,91,0,,155.6,70,Second run against fitted reference
+2026-10-31_16-42-18-362325_2bikes_1.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,3,3,1143,1238,96,0,,131.2,70,Second run against fitted reference
+2026-10-31_16-47-04-085339_2Bikes_2.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,3,1,687,784,98,0,,152.2,70,Second run against fitted reference
+2026-10-31_16-47-04-085339_2Bikes_2.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,3,2,1067,1120,54,0,,93.4,70,Second run against fitted reference
+2026-10-31_16-47-04-085339_2Bikes_2.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,3,3,1151,1230,80,0,,133.9,70,Second run against fitted reference
+2026-10-31_16-56-31-448613_1bike.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,3,1,980,1056,77,0,,122.7,70,Second run against fitted reference
+2026-10-31_16-56-31-448613_1bike.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,3,2,1089,1156,68,0,,162.3,70,Second run against fitted reference
+2026-10-31_16-56-31-448613_1bike.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,3,3,1207,1270,64,0,,112.8,70,Second run against fitted reference
+2026-10-31_17-01-15-192458_2bike_backwheel.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,2,1,1019,1114,96,0,,130.0,70,Second run against fitted reference
+2026-10-31_17-01-15-192458_2bike_backwheel.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,2,2,2021,2118,98,0,,152.4,70,Second run against fitted reference
+2026-10-31_17-05-58-923336_2bike_handlebar.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,5,1,866,1113,248,9,"(-1260.6, -1600.3); (-1060.6, -1600.3); (-860.6, -1600.3); (-1260.6, -1400.3); (-1060.6, -1400.3); (-860.6, -1400.3); (-1260.6, -1200.3); (-1060.6, -1200.3); (-860.6, -1200.3)",880.3,70,Second run against fitted reference
+2026-10-31_17-05-58-923336_2bike_handlebar.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,5,2,1192,1273,82,0,,98.7,70,Second run against fitted reference
+2026-10-31_17-05-58-923336_2bike_handlebar.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,5,3,2218,2357,140,0,,150.4,70,Second run against fitted reference
+2026-10-31_17-05-58-923336_2bike_handlebar.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,5,4,2467,2524,58,0,,96.0,70,Second run against fitted reference
+2026-10-31_17-05-58-923336_2bike_handlebar.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,5,5,2627,2746,120,0,,136.3,70,Second run against fitted reference
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,6,1,2,77,76,0,,188.0,70,Second run against fitted reference
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,6,2,99,233,135,0,,128.1,70,Second run against fitted reference
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,6,3,305,443,139,0,,252.9,70,Second run against fitted reference
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,6,4,1930,2068,139,0,,193.6,70,Second run against fitted reference
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,6,5,2129,2189,61,0,,97.8,70,Second run against fitted reference
+2026-10-31_17-15-26-422975_2bikes_newpos.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,bicycle,6,6,2434,2550,117,0,,236.9,70,Second run against fitted reference
+2026-10-31_16-51-47-769836_reference.txt,fitted_2026-10-31_16-51-47-769836_reference.txt,no_bicycle,0,0,,,0,0,,69.8,70,Second run against fitted reference
