@@ -92,7 +92,7 @@ MDNS_HOSTNAME=bikeslot uv run --group model uvicorn app.main:create_app --factor
 # Web app (http://localhost:3000), against the backend, at an address a phone can reach too
 cd code/frontend
 bun install
-MOCK_MODE=false NEXT_PUBLIC_API_URL=http://<this-machine-ip>:8000 bun run dev
+MOCK_MODE=false BACKEND_INTERNAL_URL=http://127.0.0.1:8000 bun run dev
 
 # Camera node: see code/firmware/README.md
 cd code/firmware

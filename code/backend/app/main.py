@@ -52,10 +52,11 @@ def create_app(
     capture = capture or vision_capture(os.getenv("VISION_URL", "http://localhost:8001"))
 
     app = FastAPI(title="Find my Bike Slot - Backend", version="0.3.0")
-    # The web app may be served from another origin or a phone on the LAN. CORS_ORIGINS is a comma-separated list.
+    # Same-origin Next.js proxying is used in production. CORS_ORIGINS remains
+    # available for direct development access, but must be explicitly configured.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "*").split(",") if origin.strip()],
+        allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()],
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type"],
     )

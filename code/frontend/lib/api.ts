@@ -2,7 +2,9 @@ import type { DebugState, Device, ParkingLotConfig, ParkingOccupancy } from "./t
 
 export const MOCK_MODE = process.env.NEXT_PUBLIC_MOCK_MODE !== "false";
 
-const BASE = MOCK_MODE ? "" : (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+// The browser always talks to this Next.js origin. In real mode, Next.js
+// rewrites /api/v1/* to the private backend server-side.
+const BASE = "";
 // The mock's route handlers live under /api, the FastAPI backend under /api/v1.
 const PREFIX = MOCK_MODE ? "/api" : "/api/v1";
 

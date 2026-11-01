@@ -129,7 +129,7 @@ that already belongs to another parking.
 To run the web app against the backend: `scripts/start.sh`. On its own, with an address the browser can reach:
 
 ```bash
-MOCK_MODE=false NEXT_PUBLIC_API_URL=http://<backend-host>:8000 bun run dev
+MOCK_MODE=false BACKEND_INTERNAL_URL=http://<backend-host>:8000 bun run dev
 ```
 
 ## (4) Calibration capture
