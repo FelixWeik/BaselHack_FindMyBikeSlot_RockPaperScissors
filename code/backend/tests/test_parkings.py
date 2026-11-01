@@ -121,7 +121,7 @@ def test_refuses_invalid_config(client, change):
     assert client.put("/api/v1/parkings/parking-1", json=body).status_code == 422
 
 
-def test_browser_frontend_may_call_the_api(client):
+def test_unconfigured_cross_origin_frontend_may_not_call_the_api(client):
     r = client.options(
         "/api/v1/parkings/parking-1",
         headers={
@@ -130,5 +130,5 @@ def test_browser_frontend_may_call_the_api(client):
             "Access-Control-Request-Headers": "content-type",
         },
     )
-    assert r.status_code == 200
-    assert r.headers["access-control-allow-origin"] == "*"
+    assert r.status_code == 400
+    assert "access-control-allow-origin" not in r.headers

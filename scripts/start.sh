@@ -60,7 +60,7 @@ run backend "$ROOT/code/backend" env VISION_URL="http://localhost:$VISION_PORT" 
 run vision "$ROOT/code/vision" env DEMO_VIEW="$DEMO_VIEW" BACKEND_URL="http://localhost:$BACKEND_PORT" \
   MDNS_HOSTNAME="${MDNS_HOSTNAME-bikeslot}" PORT="$VISION_PORT" \
   uv run --group model uvicorn app.main:create_app --factory --host 0.0.0.0 --port "$VISION_PORT"
-run web "$ROOT/code/frontend" env MOCK_MODE=false NEXT_PUBLIC_API_URL="http://$IP:$BACKEND_PORT" \
+run web "$ROOT/code/frontend" env MOCK_MODE=false BACKEND_INTERNAL_URL="http://127.0.0.1:$BACKEND_PORT" \
   $JS run dev -- --port "$WEB_PORT"
 
 for _ in $(seq 60); do

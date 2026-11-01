@@ -31,7 +31,7 @@ In `.env.local` (restart after changing):
 | Variable | Effect |
 |---|---|
 | `MOCK_MODE=true` | default: the client calls the built-in mock routes under `/api` |
-| `MOCK_MODE=false` | the client calls `NEXT_PUBLIC_API_URL` (CORS required); the mock routes answer 404 |
+| `MOCK_MODE=false` | the Next.js server proxies `/api/v1/*` to `BACKEND_INTERNAL_URL`; the mock routes answer 404 |
 | `MOCK_HOUR=9` | optional: starts the simulated clock at that hour on a working Tuesday |
 
 The switch lives in `lib/api.ts`.

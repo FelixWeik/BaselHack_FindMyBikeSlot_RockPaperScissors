@@ -23,3 +23,5 @@ code/vision/training/runs/
 
 # npm instead of bun (scripts/start.sh falls back to it): bun.lock is the lockfile
 code/frontend/package-lock.json
+
+*.deb

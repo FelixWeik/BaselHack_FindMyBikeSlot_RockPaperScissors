@@ -1,12 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Lets phones on the same network load dev assets (without this the page never hydrates).
-  allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*", "100.*.*.*", "*.local"],
   // The client reads NEXT_PUBLIC_MOCK_MODE; MOCK_MODE (.env.local) stays the source of truth.
   env: {
     NEXT_PUBLIC_MOCK_MODE: process.env.MOCK_MODE ?? "true",
     NEXT_PUBLIC_BUILD_ID: Date.now().toString(36),
+  },
+  async rewrites() {
+    const backend = process.env.BACKEND_INTERNAL_URL ?? "http://127.0.0.1:8000";
+    return [{ source: "/api/v1/:path*", destination: `${backend}/api/v1/:path*` }];
   },
   async headers() {
     return [
