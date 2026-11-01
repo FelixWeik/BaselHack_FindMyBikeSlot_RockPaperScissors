@@ -31,8 +31,8 @@ somewhere you shouldn't, or miss your train. Nobody knows where the free spots a
 | Status | running end to end | detection works on recorded scans, not yet connected to the backend |
 
 <p align="center">
-  <img src="assets/lidarData/output/analysis_2bike_handlebar_residuals2.png" width="520" alt="Lidar scan seen from above: the wall in blue, two bikes as red dents">
-  <br><sub>A lidar scan from above: the wall of the rack in blue, two bikes as red dents. How it works: <a href="documentation/lidar_ransac_outliers.md">documentation/lidar_ransac_outliers.md</a>.</sub>
+  <img src="assets/lidarData/output/analysis_2bike_handlebar_residuals2.png" width="520" alt="One lidar sweep: distance per step, the fitted wall curve in blue and the bikes as a red dip">
+  <br><sub>One sweep of the scanner past two bikes: the fitted wall curve in blue, the bikes as the red dip where the distance drops by about 80&nbsp;cm. How it works: <a href="documentation/lidar_ransac_outliers.md">documentation/lidar_ransac_outliers.md</a>.</sub>
 </p>
 
 ### The camera model
@@ -159,7 +159,10 @@ cd code/firmware && pio run
 ## What's next
 
 - Connect the distance scanner to the backend, so a zone can mix cameras and scanners.
-- An all-in-one scanner on battery and solar that you screw onto a rack and forget.
+- Lean on the scanner where it fits better: it needs no trained model, so it isn't limited to what a model
+  learned (a cargo bike or a scooter is just something in the slot), and it sees no faces.
+- An all-in-one scanner on battery and solar that you screw onto a rack and forget. Sensor, firmware and
+  detection exist; the enclosure and power supply are the missing parts.
 - Keep a history of occupancy, so the forecast is learned instead of simulated.
 
 ## Repository layout
@@ -180,14 +183,6 @@ documentation/
   media/                    images for this page
 assets/       photos, lidar data and plots
 ```
-## Future / Half-Completed Research
-
-The team put significant effort into replacing the camera node with a lidar node.
-This means the software no longer relies on a machine learning model, using a simpler threshold metric instead.
-Therefore, we would not need to train a model that is fixed in its detection capabilities (e.g. bikes only).
-
-Also, one could build an all-in-one device containing the lidar sensors, powered by battery and solar, leaving us with a screw-on / screw-off device.
-The hardware and software already exists - The only remaining step is to actually build it
 
 ## Team
 
