@@ -180,6 +180,14 @@ documentation/
   media/                    images for this page
 assets/       photos, lidar data and plots
 ```
+## Future / Half-Completed Research
+
+The team put significant effort into replacing the camera node with a lidar node.
+This means the software no longer relies on a machine learning model, using a simpler threshold metric instead.
+Therefore, we would not need to train a model that is fixed in its detection capabilities (e.g. bikes only).
+
+Also, one could build an all-in-one device containing the lidar sensors, powered by battery and solar, leaving us with a screw-on / screw-off device.
+The hardware and software already exists - The only remaining step is to actually build it
 
 ## Team
 
